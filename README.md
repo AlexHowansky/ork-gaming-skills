@@ -33,6 +33,12 @@ python3 extract.py --out skill/pf2e-rules/data [--pf2e TAG] [--sf2e TAG]
 
 ## Updating
 
+Run `./install.sh --check` to compare the installed data with the latest releases. It prints the installed and latest tag for each game, and exits with status 1 if either is out of date (or no data is installed), so it works in scripts:
+
+```sh
+./install.sh --check || ./install.sh
+```
+
 Run `./install.sh` again to pick up the newest releases. Because the skill is a symlink, the new data takes effect right away. `data/VERSION` records the release tags and asset URLs the data came from.
 
 ## Querying the data by hand

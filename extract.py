@@ -720,12 +720,30 @@ def build_names(zips):
                     ID_NAME[sub["_id"]] = sub.get("name", "")
 
 
+def check(out: Path) -> int:
+    """Compare the installed tags in out/VERSION against the latest releases. Returns 1 if any are outdated."""
+    vf = out / "VERSION"
+    tags = [line.split()[0] for line in vf.read_text().splitlines() if line.strip()] if vf.exists() else []
+    installed = {t.split("-", 1)[0]: t for t in tags}
+    latest = latest_tags()
+    stale = False
+    for game in GAMES:
+        have, new = installed.get(game), latest[game]
+        status = "up to date" if have == new else "update available"
+        stale |= have != new
+        print(f"{game}: installed {have or 'none'}, latest {new} ({status})")
+    return 1 if stale else 0
+
+
 def main():
     ap = argparse.ArgumentParser(description=f"Extract from {REPO} release {ASSET} files.")
     for game in GAMES:
         ap.add_argument(f"--{game}", metavar="TAG", help=f"release tag, e.g. {game}-8.5.1 or 8.5.1 (default: latest)")
     ap.add_argument("--out", default="skill/pf2e-rules/data", type=Path)
+    ap.add_argument("--check", action="store_true", help="compare installed data with the latest releases and exit")
     a = ap.parse_args()
+    if a.check:
+        sys.exit(check(a.out))
     tags = {g: getattr(a, g) for g in GAMES}
     if not all(tags.values()):
         latest = latest_tags()
