@@ -101,4 +101,4 @@ bot/
   pfbot.service               # sample systemd unit
 ```
 
-The generated data is not committed. It's reproducible from the releases, and it's Paizo content published under the OGL/ORC licenses.
+This package does not include Pathfinder 2e game data. Users must obtain the source data separately and generate the local database using the included conversion tools. The generated data is not committed.
