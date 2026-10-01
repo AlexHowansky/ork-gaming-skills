@@ -26,7 +26,26 @@ The data comes from the `json-assets.zip` file attached to each upstream release
 ./install_skill.sh
 ```
 
-This symlinks `skill/pf2e-rules` to `~/.claude/skills/pf2e-rules`. Extract the data first. Start a new Claude Code session afterwards so the skill loads.
+This symlinks `skill/pf2e-rules` and `skill/hero` into `~/.claude/skills/`. Pass skill names (`./install_skill.sh pf2e-rules`) to link only some. Extract the data first. Start a new Claude Code session afterwards so the skills load.
+
+## HERO System skill
+
+The `hero` skill does the same for the HERO System (5th and 6th Edition): Powers, Advantages, Limitations, Skills, Perks, Talents, Characteristics, Martial Arts maneuvers, Disadvantages/Complications, languages, and the Vehicle/Base/Automaton/AI/Computer templates, with their costs and HERO Designer's help text. Its data comes from HERO Designer's own rules templates, which are Hero Games' copyright, so you extract it from your own copy:
+
+```sh
+npx ork-hero-extract-rules /path/to/HD6.jar   # from ork-hero-export-renderer; writes ./rules
+./extract_hero.py --rules ./rules             # writes skill/hero/data/
+```
+
+Without `--rules`, `extract_hero.py` uses `$ORK_HERO_RULES`, then `../ork-hero-export-renderer/rules`, then `./rules`. Re-run both steps after installing a new HERO Designer build.
+
+```sh
+H=skill/hero/scripts/hero.py
+$H "Blast"                           # full record, 6e first
+$H ENERGYBLAST -g 5e                 # by HERO Designer id, which is the same in both editions
+$H "Flight" -t Vehicle6E             # one template's version
+$H -s 'hit location' -f modifiers    # full-text regex search
+```
 
 ## Updating
 
@@ -103,13 +122,20 @@ Service: edit the paths and user in `bots/bun/pfbot-bun.service`, copy it to `/e
 
 ```
 extract.py                    # release json-assets.zip -> compact text
-install_skill.sh              # link skill into ~/.claude/skills
+extract_hero.py               # HERO Designer rules JSON -> compact text
+install_skill.sh              # link skills into ~/.claude/skills
 skill/pf2e-rules/
   SKILL.md                    # when Claude uses the skill; record format legend
   scripts/pf.py               # lookup / search tool
   data/                       # generated, not committed (see .gitignore)
     VERSION  sources.txt      # release tags; source-code abbreviations
     pf2e/*.txt  sf2e/*.txt    # one file per category, plus index.txt
+skill/hero/
+  SKILL.md                    # when Claude uses the skill; record format legend
+  scripts/hero.py             # lookup / search tool
+  data/                       # generated, not committed (Hero Games' copyright)
+    VERSION                   # HERO Designer build the data came from
+    5e/*.txt  6e/*.txt        # one file per category, plus index.txt
 bots/python/
   pfbot.py                    # Discord bot: /pf command, views
   store.py                    # in-memory data, lookup/search/autocomplete via pf.py
