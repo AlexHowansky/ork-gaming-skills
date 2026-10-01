@@ -4,5 +4,5 @@ bots/bun/node_modules/
 bots/python/.venv/
 bots/python/pfbot.env
 skill/hero/data/
-skill/pf2e-rules/data/
+skill/pf2e/data/
 *.pyc

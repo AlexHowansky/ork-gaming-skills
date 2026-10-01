@@ -2,7 +2,7 @@
  * Turn a compact record line into Discord markdown pages. A port of bots/python/render.py;
  * the two must produce the same text.
  *
- * Record format (see skill/pf2e-rules/SKILL.md):
+ * Record format (see skill/pf2e/SKILL.md):
  *   Name|kind level|SRC [R]|label:value|...|description
  */
 import type { Rec } from "./store";

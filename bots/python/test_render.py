@@ -1,4 +1,4 @@
-"""Tests for the bot's data store and rendering. Needs extracted data (./extract.py).
+"""Tests for the bot's data store and rendering. Needs extracted data (./extract_pf2e.py).
 
   bots/python/.venv/bin/python -m unittest discover bots/python
 """

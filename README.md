@@ -1,6 +1,6 @@
-# ork-pf2e-tools
+# ork-gaming-skills
 
-Extracts the Pathfinder 2e and Starfinder 2e compendium data published by the [Foundry VTT PF2e system](https://github.com/foundryvtt/pf2e) and turns it into a compact, grep-friendly reference. It also installs a Claude Code skill (`pf2e-rules`) so Claude looks up rules there instead of answering from memory.
+Extracts the Pathfinder 2e and Starfinder 2e compendium data published by the [Foundry VTT PF2e system](https://github.com/foundryvtt/pf2e) and turns it into a compact, grep-friendly reference. It also installs a Claude Code skill (`pf2e`) so Claude looks up rules there instead of answering from memory.
 
 The data comes from the `json-assets.zip` file attached to each upstream release. There are separate releases for each game, tagged `pf2e-X.Y.Z` and `sf2e-X.Y.Z`. Together the two zips are about 40 MB. The extracted data is about 42 MB of plain text, one record per line, covering spells, feats, actions, conditions, traits, items, classes, ancestries, deities, creatures, hazards, rules journals, and more.
 
@@ -13,20 +13,20 @@ The data comes from the `json-assets.zip` file attached to each upstream release
 ## Extract the data
 
 ```sh
-./extract.py                               # latest pf2e and sf2e releases
-./extract.py --pf2e 8.5.0 --sf2e 1.5.0     # pin specific releases
-./extract.py --pf2e pf2e-8.5.0             # full tag form also works; unpinned game uses latest
+./extract_pf2e.py                               # latest pf2e and sf2e releases
+./extract_pf2e.py --pf2e 8.5.0 --sf2e 1.5.0     # pin specific releases
+./extract_pf2e.py --pf2e pf2e-8.5.0             # full tag form also works; unpinned game uses latest
 ```
 
-`extract.py` finds the latest release tags if none were given. It downloads each `json-assets.zip` into memory (nothing is written to disk) and writes `skill/pf2e-rules/data/` next to the script, wherever you run it from. Pass `--out DIR` to write somewhere else.
+`extract_pf2e.py` finds the latest release tags if none were given. It downloads each `json-assets.zip` into memory (nothing is written to disk) and writes `skill/pf2e/data/` next to the script, wherever you run it from. Pass `--out DIR` to write somewhere else.
 
-## Install the skill
+## Install the skills
 
 ```sh
-./install_skill.sh
+./install_skills.sh
 ```
 
-This symlinks `skill/pf2e-rules` and `skill/hero` into `~/.claude/skills/`. Pass skill names (`./install_skill.sh pf2e-rules`) to link only some. Extract the data first. Start a new Claude Code session afterwards so the skills load.
+This symlinks `skill/pf2e` and `skill/hero` into `~/.claude/skills/`. Pass skill names (`./install_skills.sh pf2e`) to link only some. Extract the data first. Start a new Claude Code session afterwards so the skills load.
 
 ## HERO System skill
 
@@ -49,18 +49,18 @@ $H -s 'hit location' -f modifiers    # full-text regex search
 
 ## Updating
 
-Run `./extract.py --check` to compare the installed data with the latest releases. It prints the installed and latest tag for each game, and exits with status 1 if either is out of date (or no data is installed), so it works in scripts:
+Run `./extract_pf2e.py --check` to compare the installed data with the latest releases. It prints the installed and latest tag for each game, and exits with status 1 if either is out of date (or no data is installed), so it works in scripts:
 
 ```sh
-./extract.py --check || ./extract.py
+./extract_pf2e.py --check || ./extract_pf2e.py
 ```
 
-Run `./extract.py` again to pick up the newest releases. Because the skill is a symlink, the new data takes effect right away without reinstalling. `data/VERSION` records the release tags and asset URLs the data came from.
+Run `./extract_pf2e.py` again to pick up the newest releases. Because the skill is a symlink, the new data takes effect right away without reinstalling. `data/VERSION` records the release tags and asset URLs the data came from.
 
 ## Querying the data by hand
 
 ```sh
-S=skill/pf2e-rules/scripts/pf.py
+S=skill/pf2e/scripts/pf.py
 $S "Fireball"                        # full record, one field per line
 $S "Red Dragon (Young)" -g pf2e      # limit to one game
 $S "Goblin Warrior" -f creature-lore # creature background (opt-in file)
@@ -75,12 +75,12 @@ There are two interchangeable Discord bots that answer `/pf <query>`: a Python o
 
 Common setup:
 
-1. Extract the data (`./extract.py`).
+1. Extract the data (`./extract_pf2e.py`).
 2. In the [Discord developer portal](https://discord.com/developers/applications), create an application, add a bot, and copy its token (from the **Bot** page, not the Public Key). No privileged intents are needed.
 3. Invite it with `https://discord.com/oauth2/authorize?client_id=<APPLICATION_ID>&scope=bot+applications.commands&permissions=19456` (View Channels, Send Messages, Embed Links).
 4. Register the slash command with `--sync` (below) once, and again whenever the command definition changes. Global commands can take a while to appear. Set `PF_GUILD_ID` in the env file to sync to a single server instantly while testing. If you synced an older version that also had `/sf`, this sync removes it.
 
-Both bots load all data into memory at startup, so restart the service after `./extract.py` updates the data.
+Both bots load all data into memory at startup, so restart the service after `./extract_pf2e.py` updates the data.
 
 ### Python
 
@@ -121,10 +121,10 @@ Service: edit the paths and user in `bots/bun/pfbot-bun.service`, copy it to `/e
 ## Layout
 
 ```
-extract.py                    # release json-assets.zip -> compact text
+extract_pf2e.py               # release json-assets.zip -> compact text
 extract_hero.py               # HERO Designer rules JSON -> compact text
-install_skill.sh              # link skills into ~/.claude/skills
-skill/pf2e-rules/
+install_skills.sh             # link skills into ~/.claude/skills
+skill/pf2e/
   SKILL.md                    # when Claude uses the skill; record format legend
   scripts/pf.py               # lookup / search tool
   data/                       # generated, not committed (see .gitignore)

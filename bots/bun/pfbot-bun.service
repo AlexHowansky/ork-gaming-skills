@@ -1,4 +1,4 @@
-# Sample systemd unit. Replace /path/to/ork-pf2e-tools and YOUR_USER, then:
+# Sample systemd unit. Replace /path/to/ork-gaming-skills and YOUR_USER, then:
 #   sudo cp bots/bun/pfbot-bun.service /etc/systemd/system/
 #   sudo systemctl daemon-reload && sudo systemctl enable --now pfbot-bun
 [Unit]
@@ -9,8 +9,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=YOUR_USER
-WorkingDirectory=/path/to/ork-pf2e-tools/bots/bun
-EnvironmentFile=/path/to/ork-pf2e-tools/bots/bun/.env
+WorkingDirectory=/path/to/ork-gaming-skills/bots/bun
+EnvironmentFile=/path/to/ork-gaming-skills/bots/bun/.env
 ExecStart=/home/YOUR_USER/.bun/bin/bun src/bot.ts
 Restart=on-failure
 RestartSec=10
