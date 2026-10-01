@@ -51,37 +51,54 @@ $S "Goblin Warrior" -f creature-lore # creature background (opt-in file)
 $S -s 'flank' -f rules               # full-text regex search, lists matches
 ```
 
-## Discord bot
+## Discord bots
 
-`bot/` is a Discord bot that answers `/pf <query>` using the same data and matching as `pf.py`. It searches Pathfinder 2e and Starfinder 2e together, and each result says which game it's from. Names autocomplete as you type. Results are private to the person who asked, with a **Share to channel** button to post them. When a query matches several records (including the same name in both games), a dropdown lets you switch between them. Long records page with ◀ ▶, and creatures with background text get a **Lore** button. If no name matches, the bot falls back to a full-text search and lists the hits.
+There are two interchangeable Discord bots that answer `/pf <query>`: a Python one in `bots/python/` (discord.py) and a Bun/TypeScript one in `bots/bun/` (discord.js). They look the same to users and give identical results. The Python bot reuses `pf.py` directly. The Bun bot is a port of it that reads the same data files and doesn't need Python. Run one or the other. Both register `/pf` and can use the same Discord application, but don't run both with the same token at once.
 
-Setup:
+`/pf` searches Pathfinder 2e and Starfinder 2e together, and each result says which game it's from. Names autocomplete as you type. Results are private to the person who asked, with a **Share to channel** button to post them. When a query matches several records (including the same name in both games), a dropdown lets you switch between them. Long records page with ◀ ▶, and creatures with background text get a **Lore** button. If no name matches, the bot falls back to a full-text search and lists the hits.
+
+Common setup:
 
 1. Extract the data (`./install.sh`, or `python3 extract.py --out skill/pf2e-rules/data`).
-2. In the [Discord developer portal](https://discord.com/developers/applications), create an application, add a bot, and copy its token. No privileged intents are needed.
+2. In the [Discord developer portal](https://discord.com/developers/applications), create an application, add a bot, and copy its token (from the **Bot** page, not the Public Key). No privileged intents are needed.
 3. Invite it with `https://discord.com/oauth2/authorize?client_id=<APPLICATION_ID>&scope=bot+applications.commands&permissions=19456` (View Channels, Send Messages, Embed Links).
-4. Install and configure:
-   ```sh
-   python3 -m venv bot/.venv
-   bot/.venv/bin/pip install -r bot/requirements.txt
-   cp bot/pfbot.env.example bot/pfbot.env && chmod 600 bot/pfbot.env   # set DISCORD_TOKEN
-   ```
-5. Register the slash commands once, and again whenever the command definitions change:
-   ```sh
-   set -a; . bot/pfbot.env; set +a
-   bot/.venv/bin/python bot/pfbot.py --sync
-   ```
-   Global commands can take a while to appear. Set `PF_GUILD_ID` to sync to a single server instantly while testing. If you synced an older version that also had `/sf`, this sync removes it.
-6. Run it as a service: edit the paths and user in `bot/pfbot.service`, copy it to `/etc/systemd/system/`, then `sudo systemctl enable --now pfbot`.
+4. Register the slash command with `--sync` (below) once, and again whenever the command definition changes. Global commands can take a while to appear. Set `PF_GUILD_ID` in the env file to sync to a single server instantly while testing. If you synced an older version that also had `/sf`, this sync removes it.
 
-The bot loads all data into memory at startup, so restart it (`sudo systemctl restart pfbot`) after `./install.sh` updates the data.
+Both bots load all data into memory at startup, so restart the service after `./install.sh` updates the data.
 
-To check formatting without connecting to Discord:
+### Python
 
 ```sh
-bot/.venv/bin/python bot/pfbot.py --preview "Red Dragon (Adult)"
-bot/.venv/bin/python -m unittest discover bot
+python3 -m venv bots/python/.venv
+bots/python/.venv/bin/pip install -r bots/python/requirements.txt
+cp bots/python/pfbot.env.example bots/python/pfbot.env && chmod 600 bots/python/pfbot.env   # set DISCORD_TOKEN
+
+set -a; . bots/python/pfbot.env; set +a
+bots/python/.venv/bin/python bots/python/pfbot.py --sync      # register /pf, then keep running
+
+bots/python/.venv/bin/python bots/python/pfbot.py --preview "Red Dragon (Adult)"   # no Discord needed
+bots/python/.venv/bin/python -m unittest discover bots/python
 ```
+
+Service: edit the paths and user in `bots/python/pfbot.service`, copy it to `/etc/systemd/system/`, then `sudo systemctl enable --now pfbot`.
+
+### Bun
+
+Requires [Bun](https://bun.sh) 1.x.
+
+```sh
+cd bots/bun
+bun install
+cp .env.example .env && chmod 600 .env   # set DISCORD_TOKEN; Bun loads .env automatically
+
+bun run sync     # register /pf, then keep running (later runs: bun run start)
+
+bun src/bot.ts --preview "Red Dragon (Adult)"   # no Discord needed
+bun test
+bun run typecheck
+```
+
+Service: edit the paths and user in `bots/bun/pfbot-bun.service`, copy it to `/etc/systemd/system/`, then `sudo systemctl enable --now pfbot-bun`.
 
 ## Layout
 
@@ -94,11 +111,17 @@ skill/pf2e-rules/
   data/                       # generated, not committed (see .gitignore)
     VERSION  sources.txt      # release tags; source-code abbreviations
     pf2e/*.txt  sf2e/*.txt    # one file per category, plus index.txt
-bot/
+bots/python/
   pfbot.py                    # Discord bot: /pf command, views
   store.py                    # in-memory data, lookup/search/autocomplete via pf.py
   render.py                   # record -> Discord markdown pages
   pfbot.service               # sample systemd unit
+bots/bun/
+  src/bot.ts                  # Discord bot (discord.js): /pf command, components
+  src/store.ts                # port of pf.py + store.py
+  src/render.ts               # port of render.py (same output)
+  test/                       # bun test
+  pfbot-bun.service           # sample systemd unit
 ```
 
 This package does not include Pathfinder 2e game data. Users must obtain the source data separately and generate the local database using the included conversion tools. The generated data is not committed.

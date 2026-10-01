@@ -1,5 +1,5 @@
 # Sample systemd unit. Replace /path/to/ork-pf2e-tools and YOUR_USER, then:
-#   sudo cp bot/pfbot.service /etc/systemd/system/
+#   sudo cp bots/python/pfbot.service /etc/systemd/system/
 #   sudo systemctl daemon-reload && sudo systemctl enable --now pfbot
 [Unit]
 Description=PF2e/SF2e Discord lookup bot
@@ -10,8 +10,8 @@ Wants=network-online.target
 Type=simple
 User=YOUR_USER
 WorkingDirectory=/path/to/ork-pf2e-tools
-EnvironmentFile=/path/to/ork-pf2e-tools/bot/pfbot.env
-ExecStart=/path/to/ork-pf2e-tools/bot/.venv/bin/python bot/pfbot.py
+EnvironmentFile=/path/to/ork-pf2e-tools/bots/python/pfbot.env
+ExecStart=/path/to/ork-pf2e-tools/bots/python/.venv/bin/python bots/python/pfbot.py
 Restart=on-failure
 RestartSec=10
 

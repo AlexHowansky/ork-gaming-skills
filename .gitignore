@@ -1,5 +1,7 @@
 __pycache__/
-bot/.venv/
-bot/pfbot.env
+bots/bun/.env
+bots/bun/node_modules/
+bots/python/.venv/
+bots/python/pfbot.env
 skill/pf2e-rules/data/
 *.pyc

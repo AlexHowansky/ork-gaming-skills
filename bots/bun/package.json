@@ -1,0 +1,19 @@
+{
+  "name": "pfbot-bun",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun src/bot.ts",
+    "sync": "bun src/bot.ts --sync",
+    "preview": "bun src/bot.ts --preview",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "discord.js": "^14.27.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "typescript": "^7.0.2"
+  }
+}

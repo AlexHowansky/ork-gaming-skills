@@ -1,6 +1,6 @@
 """Tests for the bot's data store and rendering. Needs extracted data (./install.sh).
 
-  bot/.venv/bin/python -m unittest discover bot
+  bots/python/.venv/bin/python -m unittest discover bots/python
 """
 import unittest
 
