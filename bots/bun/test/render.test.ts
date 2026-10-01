@@ -1,8 +1,10 @@
 // Tests for the data store and rendering; same cases as bots/python/test_render.py.
-// Needs extracted data (./extract_pf2e.py).
+// Needs extracted data (./extract_pf2e.py); the HERO tests also need ./extract_hero.py and are skipped without it.
 import { beforeAll, describe, expect, test } from "bun:test";
 import * as render from "../src/render";
 import { encode, nameOf, SEP, Store, type Rec } from "../src/store";
+
+const hero = await Store.loadHero();
 
 let store: Store;
 beforeAll(async () => {
@@ -133,5 +135,45 @@ describe("lookup", () => {
   test("lore", () => {
     expect(store.loreFor(first("pf2e", "Goblin Warrior"))).toBeDefined();
     expect(store.loreFor(first("pf2e", "Fireball"))).toBeUndefined();
+  });
+});
+
+describe.skipIf(!hero.records.length)("hero", () => {
+  const first = (game: string, query: string) => hero.find(query).find((r) => r[0] === game)!;
+
+  test("6e first and id lookup", () => {
+    expect(hero.find("Flight")[0]![0]).toBe("6e");
+    expect(hero.find("ENERGYBLAST").map((r) => [r[0], nameOf(r)])).toEqual([["6e", "Blast"], ["5e", "Energy Blast"]]);
+  });
+
+  test("encoded pick disambiguates templates", () => {
+    const hits = hero.records.filter((r) => r[0] === "6e" && nameOf(r) === "Flight");
+    expect(hits.length).toBeGreaterThan(1);
+    for (const rec of hits) expect(hero.find(encode(rec))).toEqual([rec]);
+    expect(encode(hits[0]!)).toBe(`6e${SEP}powers${SEP}Flight${SEP}Main6E`);
+  });
+
+  test("power", () => {
+    const r = render.render(first("6e", "Flight"));
+    const body = r.pages[0]!;
+    expect(body).toStartWith("*Power*\n**Type** movement · **Cost** +1 per 1, lvls 1+");
+    expect(body).toContain("**Modifiers**\n• **Gliding** (-1): Flight purchased");
+    expect(render.footer(r, hero.sources)).toBe("HERO System 6e · Main6E · FLIGHT");
+  });
+
+  test("nested options stay together", () => {
+    const body = render.render(first("6e", "Area Of Effect")).pages[0]!;
+    expect(body).toContain("• **Line** (+1/4 per 1) {Height (m) (+1/4 per 1, lvls 3+); Width (m)");
+    expect(body).toContain("• **Nonselective** (-1/4) [excl SELECTIVETARGET]");
+  });
+
+  test("option label and plain items", () => {
+    expect(render.render(first("6e", "Resource Points")).pages[0]).toContain("**Type**\n• **Equipment Points**");
+    expect(render.render(first("6e", "Vehicle6E")).pages[0]).toContain("**Removes**\n• mainapp NCM");
+  });
+
+  test("largest records", () => {
+    for (const rec of [...hero.records].sort((a, b) => a[2].length - b[2].length).slice(-20))
+      for (const p of render.render(rec).pages) expect(p.length).toBeLessThanOrEqual(4096);
   });
 });

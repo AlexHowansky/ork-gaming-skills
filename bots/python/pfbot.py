@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Discord bot: /pf looks up Pathfinder 2e and Starfinder 2e records.
+"""Discord bot: /pf looks up Pathfinder 2e and Starfinder 2e records, /hero HERO System ones.
 
   pfbot.py                      run the bot (needs DISCORD_TOKEN)
   pfbot.py --sync               also register slash commands with Discord (global, or PF_GUILD_ID)
   pfbot.py --preview QUERY      print what the bot would show, without connecting
+  pfbot.py --preview QUERY --hero   the same, for /hero
   pfbot.py --verbose            log every interaction to the console
+
+/hero is only offered when the HERO data has been extracted (./extract_hero.py).
 """
 import argparse
 import asyncio
@@ -15,7 +18,7 @@ import sys
 import discord
 from discord import app_commands
 
-from store import Store, encode, kind_of, name_of
+from store import HeroStore, Store, encode, kind_of, name_of, system_of
 import render
 
 log = logging.getLogger("pfbot")
@@ -38,8 +41,11 @@ def option(rec, value):
 
 
 def label(rec):
-    """'PF2e spell 3 (spells)': tells apart same-named records across games and files."""
-    return f"{render.GAME_TAGS.get(rec[0], rec[0])} {kind_of(rec)} ({rec[1]})"
+    """'PF2e spell 3 (spells)' or '6e power Vehicle6E (powers)': tells apart same-named records
+    across games, files and HERO Designer templates (the usual Main/Main6E one is left out)."""
+    system = system_of(rec)
+    system = "" if system in ("", "Main", "Main6E") else f" {system}"
+    return f"{render.GAME_TAGS.get(rec[0], rec[0])} {kind_of(rec)}{system} ({rec[1]})"
 
 
 def make_view(store, rec, choices, page=0, placeholder="Other matches"):
@@ -142,10 +148,11 @@ def describe(interaction):
     """One-line summary of an interaction for --verbose, or None if it isn't ours."""
     data = interaction.data or {}
     opts = {o["name"]: o for o in data.get("options", [])}
-    if interaction.type is discord.InteractionType.autocomplete and data.get("name") == "pf":
-        what = f'autocomplete "{opts.get("query", {}).get("value", "")}"'
-    elif interaction.type is discord.InteractionType.application_command and data.get("name") == "pf":
-        what = f'/pf "{opts.get("query", {}).get("value", "")}"'
+    name = data.get("name")
+    if interaction.type is discord.InteractionType.autocomplete and name in COMMANDS:
+        what = f'/{name} autocomplete "{opts.get("query", {}).get("value", "")}"'
+    elif interaction.type is discord.InteractionType.application_command and name in COMMANDS:
+        what = f'/{name} "{opts.get("query", {}).get("value", "")}"'
     elif interaction.type is discord.InteractionType.component:
         # Views use random custom ids, so name the component by what the message shows for it.
         comp = next((c for row in (interaction.message.components if interaction.message else [])
@@ -162,7 +169,34 @@ def describe(interaction):
     return f"{interaction.user} ({where}): {what}"
 
 
-def build(store, verbose=False):
+COMMANDS = {
+    "pf": "Look up a Pathfinder 2e or Starfinder 2e rule, spell, feat, creature, item…",
+    "hero": "Look up a HERO System power, advantage, limitation, skill, talent, maneuver…",
+}
+
+
+def add_command(tree, store):
+    """Register /<store.command> with a `query` option that autocompletes names from `store`."""
+    @app_commands.describe(query="Name to look up (or text to search for)")
+    async def run(interaction: discord.Interaction, query: str):
+        await lookup(interaction, store, query)
+
+    async def complete(interaction: discord.Interaction, current: str):
+        out = []
+        for rec in store.suggest(current):
+            value = encode(rec)
+            if len(value) > 100:
+                value = name_of(rec)[:100]
+            out.append(app_commands.Choice(name=trunc(f"{name_of(rec)} — {label(rec)}"), value=value))
+        return out
+
+    cmd = app_commands.Command(name=store.command, description=COMMANDS[store.command], callback=run)
+    cmd.autocomplete("query")(complete)
+    tree.add_command(cmd)
+
+
+def build(stores, verbose=False):
+    """Client and command tree with one slash command per store (skipping stores with no data)."""
     client = discord.Client(intents=discord.Intents.default(), allowed_mentions=discord.AllowedMentions.none())
     tree = app_commands.CommandTree(client)
 
@@ -173,20 +207,9 @@ def build(store, verbose=False):
             if what:
                 log.info("%s", what)
 
-    @tree.command(name="pf", description="Look up a Pathfinder 2e or Starfinder 2e rule, spell, feat, creature, item…")
-    @app_commands.describe(query="Name to look up (or text to search for)")
-    async def pf(interaction: discord.Interaction, query: str):
-        await lookup(interaction, store, query)
-
-    @pf.autocomplete("query")
-    async def complete(interaction: discord.Interaction, current: str):
-        out = []
-        for rec in store.suggest(current):
-            value = encode(rec)
-            if len(value) > 100:
-                value = name_of(rec)[:100]
-            out.append(app_commands.Choice(name=trunc(f"{name_of(rec)} — {label(rec)}"), value=value))
-        return out
+    for store in stores:
+        if store.records:
+            add_command(tree, store)
 
     @tree.error
     async def on_error(interaction, error):
@@ -204,13 +227,17 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--sync", action="store_true", help="register slash commands with Discord on startup")
     ap.add_argument("--preview", metavar="QUERY", help="print rendered result and exit")
+    ap.add_argument("--hero", action="store_true", help="with --preview, look up HERO System data")
     ap.add_argument("--verbose", action="store_true", help="log every interaction to the console")
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
-    store = Store()
+    stores = [Store(), HeroStore()]
+    if not stores[1].records:
+        log.info("no HERO data in %s; /hero is disabled", stores[1].data)
 
     if a.preview:
+        store = stores[1] if a.hero else stores[0]
         query = a.preview
         hits = store.find(query)
         if not hits:
@@ -231,7 +258,7 @@ def main():
     token = os.environ.get("DISCORD_TOKEN")
     if not token:
         sys.exit("DISCORD_TOKEN is not set")
-    client, tree = build(store, a.verbose)
+    client, tree = build(stores, a.verbose)
     @client.event
     async def setup_hook():
         if a.sync:
@@ -246,7 +273,7 @@ def main():
 
     @client.event
     async def on_ready():
-        log.info("logged in as %s; data %s", client.user, store.version)
+        log.info("logged in as %s; data %s", client.user, {k: v for s in stores for k, v in s.version.items()})
 
     client.run(token, log_handler=None)
 

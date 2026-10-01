@@ -1,15 +1,18 @@
 """Turn a compact record line into Discord markdown pages.
 
-Record format (see skill/pf2e/SKILL.md):
+PF2e/SF2e record format (see skill/pf2e/SKILL.md):
   Name|kind level|SRC [R]|label:value|...|description
+HERO System record format (see skill/hero/SKILL.md):
+  Name|kind|system|id:XMLID|label:value|...|definition
 """
 import re
 from dataclasses import dataclass, field
 
 PAGE = 4000  # embed description limit is 4096
-COLORS = {"pf2e": 0x5D0000, "sf2e": 0x1F6FB2}
-GAME_NAMES = {"pf2e": "Pathfinder 2e", "sf2e": "Starfinder 2e"}
-GAME_TAGS = {"pf2e": "PF2e", "sf2e": "SF2e"}
+COLORS = {"pf2e": 0x5D0000, "sf2e": 0x1F6FB2, "6e": 0xC9A227, "5e": 0x7A5C12}
+GAME_NAMES = {"pf2e": "Pathfinder 2e", "sf2e": "Starfinder 2e", "6e": "HERO System 6e", "5e": "HERO System 5e"}
+GAME_TAGS = {"pf2e": "PF2e", "sf2e": "SF2e", "6e": "6e", "5e": "5e"}
+HERO_GAMES = ("6e", "5e")
 
 ACTIONS = {"1a": "◆", "2a": "◆◆", "3a": "◆◆◆", "r": "⟲", "f": "◇", "0": "◇"}
 LETTER_ACTIONS = {"A": "◆", "D": "◆◆", "T": "◆◆◆", "R": "⟲", "F": "◇"}
@@ -57,6 +60,7 @@ class Rendered:
     kind: str
     source: str = ""
     remaster: bool = False
+    xmlid: str = ""  # HERO Designer id, shown in the footer
     pages: list = field(default_factory=list)
 
 
@@ -293,6 +297,8 @@ def _fix_code_blocks(pages):
 
 
 def render(rec):
+    if rec[0] in HERO_GAMES:
+        return render_hero(rec)
     r, rest = parse(rec)
     header = f"*{esc(r.kind[:1].upper() + r.kind[1:])}*" if r.kind else ""
     rest = sorted(rest, key=lambda p: not p.startswith("tr:"))  # traits first; stable otherwise
@@ -308,9 +314,109 @@ def footer(r, store=None, page=0):
         bits.append(f"{title} ({r.source})" if title else r.source)
     if r.remaster:
         bits.append("Remaster")
+    if r.xmlid:
+        bits.append(r.xmlid)
     if len(r.pages) > 1:
         bits.append(f"Page {page + 1}/{len(r.pages)}")
     return " · ".join(bits)
+
+
+# HERO System
+
+HERO_LABELS = {
+    "type": "Type", "cost": "Cost", "dur": "Duration", "tgt": "Target", "rng": "Range", "end": "END",
+    "def": "Defense", "does": "Does", "visible": "Visible", "killing": "Killing", "opt": "Options",
+    "adders": "Adders", "mods": "Modifiers", "excl": "Excludes", "req": "Requires", "ex": "Examples",
+    "src": "Source", "provides": "Provides", "roll": "Roll", "fam": "Familiarity", "base": "Base",
+    "figured": "Figured", "ncm": "NCM", "cat": "Category", "ocv": "OCV", "dcv": "DCV", "phase": "Phase",
+    "dc": "DC", "effect": "Effect", "weapon effect": "Weapon Effect", "family": "Family",
+    "4pt": "4 pts", "3pt": "3 pts", "2pt": "2 pts", "1pt": "1 pt", "extends": "Extends",
+    "sheet": "Sheet", "settings": "Settings", "removes": "Removes", "entries": "Entries",
+}
+HERO_HIDDEN = {"id", "adderseparator", "abbreviation", "wgabbreviation", "optionlabel", "showoption",
+               "showinputinparens", "displaylevelsonly"}
+HERO_LISTS = {"opt", "adders", "mods", "ex", "removes", "entries"}  # '; '-separated
+HERO_LABEL_RE = re.compile(r"^([a-z0-9][a-z0-9 ]{0,23}):(.*)$", re.S)
+HERO_LINE = 100  # short fields share a line up to about this long
+
+
+def split_list(value):
+    """Split on '; ' outside (), [] and {}: option lists nest inside items."""
+    items, depth, start = [], 0, 0
+    for i, c in enumerate(value):
+        if c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth = max(0, depth - 1)
+        elif depth == 0 and value.startswith("; ", i):
+            items.append(value[start:i])
+            start = i + 2
+    items.append(value[start:])
+    return [x for x in items if x]
+
+
+def hero_item(item):
+    """'Name (cost) [excl X] {options}: definition' -> bullet with the name in bold."""
+    m = re.match(r"^(.+?)(?= [(\[{]|: |$)", item, re.S)
+    name, rest = m.group(1), item[m.end():]
+    return f"• **{esc(name)}**{esc(rest)}" if rest else f"• {esc(item)}"
+
+
+def hero_label(label, opt_label=""):
+    if label == "opt" and opt_label:
+        return opt_label
+    return HERO_LABELS.get(label, label[:1].upper() + label[1:])
+
+
+def hero_blocks(rest):
+    out, short = [], []
+    opt_label = next((p[len("optionlabel:"):] for p in rest if p.startswith("optionlabel:")), "")
+
+    def flush():
+        line = ""
+        for s in short:
+            if line and len(line) + len(s) + 3 > HERO_LINE:
+                out.append(line)
+                line = s
+            else:
+                line = f"{line} · {s}" if line else s
+        if line:
+            out.append(line)
+        short.clear()
+
+    for p in rest:
+        m = HERO_LABEL_RE.match(p)
+        if not m:
+            flush()
+            out.append("\n".join(esc(x.strip()) for x in p.split(" / ") if x.strip()))
+            continue
+        label, value = m.group(1), m.group(2)
+        if label in HERO_HIDDEN:
+            continue
+        name = esc(hero_label(label, opt_label))
+        if label in HERO_LISTS and len(value) > 60:
+            flush()
+            out.append(f"**{name}**\n" + "\n".join(hero_item(x) for x in split_list(value)))
+        elif len(value) <= 40:
+            short.append(f"**{name}** {esc(value)}")
+        else:
+            flush()
+            out.append(f"**{name}** {esc(value)}")
+    flush()
+    return out
+
+
+def render_hero(rec):
+    game, stem, line = rec
+    parts = line.split("|")
+    r = Rendered(game=game, stem=stem, name=parts[0].replace("¦", "|"),
+                 kind=parts[1] if len(parts) > 1 else "",
+                 source=parts[2] if len(parts) > 2 else "")
+    rest = parts[3:]
+    r.xmlid = next((p[3:] for p in rest if p.startswith("id:")), "")
+    header = f"*{esc(r.kind[:1].upper() + r.kind[1:])}*" if r.kind else ""
+    r.pages = paginate(([header] if header else []) + hero_blocks(rest))
+    return r
 
 
 def to_text(r, store=None):

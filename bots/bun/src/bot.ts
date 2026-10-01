@@ -1,10 +1,14 @@
 /**
- * Discord bot: /pf looks up Pathfinder 2e and Starfinder 2e records. A port of bots/python/pfbot.py.
+ * Discord bot: /pf looks up Pathfinder 2e and Starfinder 2e records, /hero HERO System ones.
+ * A port of bots/python/pfbot.py.
  *
  *   bun src/bot.ts                  run the bot (needs DISCORD_TOKEN)
  *   bun src/bot.ts --sync           also register slash commands with Discord (global, or PF_GUILD_ID)
  *   bun src/bot.ts --preview QUERY  print what the bot would show, without connecting
+ *   bun src/bot.ts --preview QUERY --hero   the same, for /hero
  *   bun src/bot.ts --verbose        log every interaction and gateway event to the console
+ *
+ * /hero is only offered when the HERO data has been extracted (./extract_hero.py).
  */
 import {
   ActionRowBuilder,
@@ -26,14 +30,13 @@ import {
   type StringSelectMenuInteraction,
 } from "discord.js";
 import * as render from "./render";
-import { encode, kindOf, nameOf, Store, type Hit, type Rec } from "./store";
+import { encode, kindOf, nameOf, Store, systemOf, type Hit, type Rec } from "./store";
 
 const TTL = 14 * 60 * 1000; // interaction tokens expire after 15 minutes
-const PREFIX = "pf";
 
 /**
  * What a result message is showing. discord.js has no per-message view objects, so buttons and
- * dropdowns carry `pf:<action>:<state id>` and look their state up here.
+ * dropdowns carry `<command>:<action>:<state id>` (e.g. `pf:next:1a2b3c4d`) and look their state up here.
  */
 type State = { rec: Rec | null; choices: Rec[]; page: number; placeholder: string; expires: number };
 const states = new Map<string, State>();
@@ -53,9 +56,14 @@ function trunc(s: string, n = 100): string {
   return s.length <= n ? s : s.slice(0, n - 1) + "…";
 }
 
-/** 'PF2e spell 3 (spells)': tells apart same-named records across games and files. */
+/**
+ * 'PF2e spell 3 (spells)' or '6e power Vehicle6E (powers)': tells apart same-named records
+ * across games, files and HERO Designer templates (the usual Main/Main6E one is left out).
+ */
 function label(rec: Rec): string {
-  return `${render.GAME_TAGS[rec[0]] ?? rec[0]} ${kindOf(rec)} (${rec[1]})`;
+  let system = systemOf(rec);
+  system = ["", "Main", "Main6E"].includes(system) ? "" : ` ${system}`;
+  return `${render.GAME_TAGS[rec[0]] ?? rec[0]} ${kindOf(rec)}${system} (${rec[1]})`;
 }
 
 function embed(r: render.Rendered, store: Store, page = 0): EmbedBuilder {
@@ -66,10 +74,10 @@ function embed(r: render.Rendered, store: Store, page = 0): EmbedBuilder {
     .setFooter({ text: render.footer(r, store.sources, page) });
 }
 
-function select(id: string, placeholder: string, choices: Rec[]) {
+function select(store: Store, id: string, placeholder: string, choices: Rec[]) {
   return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
     new StringSelectMenuBuilder()
-      .setCustomId(`${PREFIX}:pick:${id}`)
+      .setCustomId(`${store.command}:pick:${id}`)
       .setPlaceholder(placeholder)
       .addOptions(
         choices.slice(0, 25).map((c, i) =>
@@ -85,9 +93,9 @@ function view(store: Store, id: string, state: State) {
   const r = render.render(rec);
   const page = Math.min(state.page, r.pages.length - 1);
   const components: ActionRowBuilder<any>[] = [];
-  if (state.choices.length) components.push(select(id, state.placeholder, state.choices));
+  if (state.choices.length) components.push(select(store, id, state.placeholder, state.choices));
   const button = (action: string, text: string, style = ButtonStyle.Secondary, disabled = false) =>
-    new ButtonBuilder().setCustomId(`${PREFIX}:${action}:${id}`).setLabel(text).setStyle(style).setDisabled(disabled);
+    new ButtonBuilder().setCustomId(`${store.command}:${action}:${id}`).setLabel(text).setStyle(style).setDisabled(disabled);
   const buttons: ButtonBuilder[] = [];
   if (r.pages.length > 1) {
     buttons.push(button("prev", "◀", ButtonStyle.Secondary, page === 0));
@@ -136,7 +144,7 @@ export async function lookup(interaction: ChatInputCommandInteraction, store: St
   const id = remember({ rec: null, choices: recs, page: 0, placeholder: "Other text matches" });
   await interaction.reply({
     embeds: [searchEmbed(query, found)],
-    components: [select(id, "Open a result", recs)],
+    components: [select(store, id, "Open a result", recs)],
     flags: MessageFlags.Ephemeral,
   });
 }
@@ -156,7 +164,7 @@ export async function component(interaction: ButtonInteraction | StringSelectMen
   const [, action, id] = interaction.customId.split(":");
   const state = id ? states.get(id) : undefined;
   if (!state || state.expires < Date.now()) {
-    await interaction.reply({ content: "This result expired — run /pf again.", flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: `This result expired — run /${store.command} again.`, flags: MessageFlags.Ephemeral });
     return;
   }
   state.expires = Date.now() + TTL;
@@ -185,21 +193,35 @@ export async function component(interaction: ButtonInteraction | StringSelectMen
   }
 }
 
-export const command = new SlashCommandBuilder()
-  .setName("pf")
-  .setDescription("Look up a Pathfinder 2e or Starfinder 2e rule, spell, feat, creature, item…")
-  .addStringOption((o) =>
+const DESCRIPTIONS: Record<Store["command"], string> = {
+  pf: "Look up a Pathfinder 2e or Starfinder 2e rule, spell, feat, creature, item…",
+  hero: "Look up a HERO System power, advantage, limitation, skill, talent, maneuver…",
+};
+
+/** Slash command definition for a store's command. */
+export function command(name: Store["command"]): SlashCommandBuilder {
+  const def = new SlashCommandBuilder().setName(name).setDescription(DESCRIPTIONS[name]);
+  def.addStringOption((o) =>
     o.setName("query").setDescription("Name to look up (or text to search for)").setRequired(true).setAutocomplete(true),
   );
+  return def;
+}
+
+/** The command an interaction is for: its slash command name or its component custom id prefix. */
+function commandOf(interaction: Interaction): string | undefined {
+  if (interaction.isAutocomplete() || interaction.isChatInputCommand()) return interaction.commandName;
+  if (interaction.isButton() || interaction.isStringSelectMenu()) return interaction.customId.split(":")[0];
+}
 
 /** One-line summary of an interaction for --verbose, or null if it isn't ours. */
 export function describe(interaction: Interaction): string | null {
+  const name = commandOf(interaction);
+  if (!name || !Object.hasOwn(DESCRIPTIONS, name)) return null;
   let what: string;
-  if (interaction.isAutocomplete() && interaction.commandName === "pf")
-    what = `autocomplete ${JSON.stringify(interaction.options.getFocused())}`;
-  else if (interaction.isChatInputCommand() && interaction.commandName === "pf")
-    what = `/pf ${JSON.stringify(interaction.options.getString("query") ?? "")}`;
-  else if ((interaction.isButton() || interaction.isStringSelectMenu()) && interaction.customId.startsWith(`${PREFIX}:`)) {
+  if (interaction.isAutocomplete()) what = `/${name} autocomplete ${JSON.stringify(interaction.options.getFocused())}`;
+  else if (interaction.isChatInputCommand())
+    what = `/${name} ${JSON.stringify(interaction.options.getString("query") ?? "")}`;
+  else if (interaction.isButton() || interaction.isStringSelectMenu()) {
     const [, action, id] = interaction.customId.split(":");
     if (interaction.isButton()) what = `button ${action}`;
     else {
@@ -214,7 +236,9 @@ export function describe(interaction: Interaction): string | null {
 
 const stamp = () => new Date().toISOString();
 
-export function build(store: Store, verbose = false): Client {
+/** Client with one slash command per store (skipping stores with no data). */
+export function build(stores: Store[], verbose = false): Client {
+  const byCommand = new Map(stores.filter((s) => s.records.length).map((s) => [s.command as string, s]));
   const client = new Client({ intents: [GatewayIntentBits.Guilds], allowedMentions: { parse: [] } });
   if (verbose) {
     client.on(Events.Warn, (msg) => console.log(`${stamp()} warn: ${msg}`));
@@ -227,11 +251,12 @@ export function build(store: Store, verbose = false): Client {
     // Describe before dispatch: picking from a dropdown changes the state it reads.
     const what = verbose ? describe(interaction) : null;
     const start = performance.now();
+    const store = byCommand.get(commandOf(interaction) ?? "");
     try {
-      if (interaction.isAutocomplete() && interaction.commandName === "pf") await complete(interaction, store);
-      else if (interaction.isChatInputCommand() && interaction.commandName === "pf") await lookup(interaction, store);
-      else if ((interaction.isButton() || interaction.isStringSelectMenu()) && interaction.customId.startsWith(`${PREFIX}:`))
-        await component(interaction, store);
+      if (!store) return;
+      if (interaction.isAutocomplete()) await complete(interaction, store);
+      else if (interaction.isChatInputCommand()) await lookup(interaction, store);
+      else if (interaction.isButton() || interaction.isStringSelectMenu()) await component(interaction, store);
     } catch (error) {
       console.error("command failed", error);
       if (!interaction.isRepliable()) return;
@@ -249,10 +274,13 @@ export function build(store: Store, verbose = false): Client {
 
 async function main() {
   const args = Bun.argv.slice(2);
-  const store = await Store.load();
+  const stores = [await Store.load(), await Store.loadHero()];
+  const live = stores.filter((s) => s.records.length);
+  if (!stores[1]!.records.length) console.log(`no HERO data in ${stores[1]!.data}; /hero is disabled`);
 
   const p = args.indexOf("--preview");
   if (p >= 0) {
+    const store = stores[args.includes("--hero") ? 1 : 0]!;
     const query = args[p + 1] ?? "";
     const hits = store.find(query);
     if (!hits.length) {
@@ -273,14 +301,14 @@ async function main() {
     console.error("DISCORD_TOKEN is not set");
     process.exit(1);
   }
-  const client = build(store, args.includes("--verbose"));
+  const client = build(stores, args.includes("--verbose"));
   client.once(Events.ClientReady, async (c) => {
-    console.log(`logged in as ${c.user.tag}; data ${JSON.stringify(Object.fromEntries(store.version))}`);
+    const version = Object.fromEntries(stores.flatMap((s) => [...s.version]));
+    console.log(`logged in as ${c.user.tag}; data ${JSON.stringify(version)}`);
     if (args.includes("--sync")) {
       const gid = process.env.PF_GUILD_ID;
-      const synced = gid
-        ? await c.application.commands.set([command.toJSON()], gid)
-        : await c.application.commands.set([command.toJSON()]);
+      const defs = live.map((s) => command(s.command).toJSON());
+      const synced = gid ? await c.application.commands.set(defs, gid) : await c.application.commands.set(defs);
       console.log(`synced ${synced.size} commands${gid ? ` to guild ${gid}` : " globally"}`);
     }
   });

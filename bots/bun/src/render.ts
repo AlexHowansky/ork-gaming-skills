@@ -2,8 +2,10 @@
  * Turn a compact record line into Discord markdown pages. A port of bots/python/render.py;
  * the two must produce the same text.
  *
- * Record format (see skill/pf2e/SKILL.md):
+ * PF2e/SF2e record format (see skill/pf2e/SKILL.md):
  *   Name|kind level|SRC [R]|label:value|...|description
+ * HERO System record format (see skill/hero/SKILL.md):
+ *   Name|kind|system|id:XMLID|label:value|...|definition
  */
 import type { Rec } from "./store";
 
@@ -13,9 +15,12 @@ function dict<T>(o: Record<string, T>): Record<string, T> {
 }
 
 export const PAGE = 4000; // embed description limit is 4096
-export const COLORS: Record<string, number> = dict({ pf2e: 0x5d0000, sf2e: 0x1f6fb2 });
-export const GAME_NAMES: Record<string, string> = dict({ pf2e: "Pathfinder 2e", sf2e: "Starfinder 2e" });
-export const GAME_TAGS: Record<string, string> = dict({ pf2e: "PF2e", sf2e: "SF2e" });
+export const COLORS: Record<string, number> = dict({ pf2e: 0x5d0000, sf2e: 0x1f6fb2, "6e": 0xc9a227, "5e": 0x7a5c12 });
+export const GAME_NAMES: Record<string, string> = dict({
+  pf2e: "Pathfinder 2e", sf2e: "Starfinder 2e", "6e": "HERO System 6e", "5e": "HERO System 5e",
+});
+export const GAME_TAGS: Record<string, string> = dict({ pf2e: "PF2e", sf2e: "SF2e", "6e": "6e", "5e": "5e" });
+const HERO_GAMES = new Set(["6e", "5e"]);
 
 const ACTIONS: Record<string, string> = dict({ "1a": "◆", "2a": "◆◆", "3a": "◆◆◆", r: "⟲", f: "◇", "0": "◇" });
 const LETTER_ACTIONS: Record<string, string> = dict({ A: "◆", D: "◆◆", T: "◆◆◆", R: "⟲", F: "◇" });
@@ -62,6 +67,7 @@ export type Rendered = {
   kind: string;
   source: string;
   remaster: boolean;
+  xmlid: string; // HERO Designer id, shown in the footer
   pages: string[];
 };
 
@@ -230,7 +236,7 @@ function parse(rec: Rec): [Rendered, string[]] {
     game, stem,
     name: parts[0]!.replaceAll("¦", "|"),
     kind: parts.length > 1 ? parts[1]! : "",
-    source: "", remaster: false, pages: [],
+    source: "", remaster: false, xmlid: "", pages: [],
   };
   let rest = parts.slice(2);
   const m = rest.length > 1 ? SRC_RE.exec(rest[0]!) : null;
@@ -297,6 +303,7 @@ function fixCodeBlocks(pages: string[]): string[] {
 }
 
 export function render(rec: Rec): Rendered {
+  if (HERO_GAMES.has(rec[0])) return renderHero(rec);
   const [r, rest] = parse(rec);
   const header = r.kind ? `*${esc(r.kind.charAt(0).toUpperCase() + r.kind.slice(1))}*` : "";
   // traits first; stable otherwise
@@ -312,8 +319,111 @@ export function footer(r: Rendered, sources?: Map<string, string>, page = 0): st
     bits.push(title ? `${title} (${r.source})` : r.source);
   }
   if (r.remaster) bits.push("Remaster");
+  if (r.xmlid) bits.push(r.xmlid);
   if (r.pages.length > 1) bits.push(`Page ${page + 1}/${r.pages.length}`);
   return bits.join(" · ");
+}
+
+// HERO System
+
+const HERO_LABELS: Record<string, string> = dict({
+  type: "Type", cost: "Cost", dur: "Duration", tgt: "Target", rng: "Range", end: "END",
+  def: "Defense", does: "Does", visible: "Visible", killing: "Killing", opt: "Options",
+  adders: "Adders", mods: "Modifiers", excl: "Excludes", req: "Requires", ex: "Examples",
+  src: "Source", provides: "Provides", roll: "Roll", fam: "Familiarity", base: "Base",
+  figured: "Figured", ncm: "NCM", cat: "Category", ocv: "OCV", dcv: "DCV", phase: "Phase",
+  dc: "DC", effect: "Effect", "weapon effect": "Weapon Effect", family: "Family",
+  "4pt": "4 pts", "3pt": "3 pts", "2pt": "2 pts", "1pt": "1 pt", extends: "Extends",
+  sheet: "Sheet", settings: "Settings", removes: "Removes", entries: "Entries",
+});
+const HERO_HIDDEN = new Set(["id", "adderseparator", "abbreviation", "wgabbreviation", "optionlabel", "showoption",
+  "showinputinparens", "displaylevelsonly"]);
+const HERO_LISTS = new Set(["opt", "adders", "mods", "ex", "removes", "entries"]); // '; '-separated
+const HERO_LABEL_RE = /^([a-z0-9][a-z0-9 ]{0,23}):(.*)$/s;
+const HERO_LINE = 100; // short fields share a line up to about this long
+
+/** Split on '; ' outside (), [] and {}: option lists nest inside items. */
+function splitList(value: string): string[] {
+  const items: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < value.length; i++) {
+    const c = value[i]!;
+    if ("([{".includes(c)) depth++;
+    else if (")]}".includes(c)) depth = Math.max(0, depth - 1);
+    else if (depth === 0 && value.startsWith("; ", i)) {
+      items.push(value.slice(start, i));
+      start = i + 2;
+    }
+  }
+  items.push(value.slice(start));
+  return items.filter((x) => x);
+}
+
+/** 'Name (cost) [excl X] {options}: definition' -> bullet with the name in bold. */
+function heroItem(item: string): string {
+  const name = /^(.+?)(?= [(\[{]|: |$)/s.exec(item)![1]!;
+  const rest = item.slice(name.length);
+  return rest ? `• **${esc(name)}**${esc(rest)}` : `• ${esc(item)}`;
+}
+
+function heroLabel(label: string, optLabel: string): string {
+  if (label === "opt" && optLabel) return optLabel;
+  return HERO_LABELS[label] ?? label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function heroBlocks(rest: string[]): string[] {
+  const out: string[] = [];
+  const short: string[] = [];
+  const optLabel = rest.find((p) => p.startsWith("optionlabel:"))?.slice("optionlabel:".length) ?? "";
+  const flush = () => {
+    let line = "";
+    for (const s of short) {
+      if (line && line.length + s.length + 3 > HERO_LINE) {
+        out.push(line);
+        line = s;
+      } else line = line ? `${line} · ${s}` : s;
+    }
+    if (line) out.push(line);
+    short.length = 0;
+  };
+  for (const p of rest) {
+    const m = HERO_LABEL_RE.exec(p);
+    if (!m) {
+      flush();
+      out.push(p.split(" / ").map((x) => x.trim()).filter((x) => x).map(esc).join("\n"));
+      continue;
+    }
+    const [, label, value] = m as unknown as [string, string, string];
+    if (HERO_HIDDEN.has(label)) continue;
+    const name = esc(heroLabel(label, optLabel));
+    if (HERO_LISTS.has(label) && value.length > 60) {
+      flush();
+      out.push(`**${name}**\n` + splitList(value).map(heroItem).join("\n"));
+    } else if (value.length <= 40) short.push(`**${name}** ${esc(value)}`);
+    else {
+      flush();
+      out.push(`**${name}** ${esc(value)}`);
+    }
+  }
+  flush();
+  return out;
+}
+
+function renderHero(rec: Rec): Rendered {
+  const [game, stem, line] = rec;
+  const parts = line.split("|");
+  const r: Rendered = {
+    game, stem,
+    name: parts[0]!.replaceAll("¦", "|"),
+    kind: parts[1] ?? "",
+    source: parts[2] ?? "", remaster: false, xmlid: "", pages: [],
+  };
+  const rest = parts.slice(3);
+  r.xmlid = rest.find((p) => p.startsWith("id:"))?.slice(3) ?? "";
+  const header = r.kind ? `*${esc(r.kind.charAt(0).toUpperCase() + r.kind.slice(1))}*` : "";
+  r.pages = paginate([...(header ? [header] : []), ...heroBlocks(rest)]);
+  return r;
 }
 
 /** Plain preview of every page, for the --preview CLI. */

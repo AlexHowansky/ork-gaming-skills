@@ -6,8 +6,10 @@ import { command, complete, component, lookup } from "../src/bot";
 import { nameOf, Store } from "../src/store";
 
 let store: Store;
+let hero: Store;
 beforeAll(async () => {
   store = await Store.load();
+  hero = await Store.loadHero();
 });
 
 type Sent = { kind: "reply" | "update" | "respond"; payload: any };
@@ -41,10 +43,12 @@ const ids = (payload: any): string[] => payload.components.flatMap((row: any) =>
 const button = (payload: any, action: string) =>
   payload.components.flatMap((row: any) => row.components).find((c: any) => c.custom_id?.startsWith(`pf:${action}:`));
 
-test("command definition", () => {
-  const def = command.toJSON();
-  expect(def.name).toBe("pf");
-  expect(def.options?.[0]).toMatchObject({ name: "query", required: true, autocomplete: true });
+test("command definitions", () => {
+  for (const name of ["pf", "hero"] as const) {
+    const def = command(name).toJSON();
+    expect(def.name).toBe(name);
+    expect(def.options?.[0]).toMatchObject({ name: "query", required: true, autocomplete: true });
+  }
 });
 
 test("autocomplete returns at most 25 valid choices", async () => {
@@ -132,4 +136,41 @@ test("dropdown labels fit Discord limits for long names", async () => {
   const { i, sent } = slash(nameOf(long));
   await lookup(i, store);
   expect(sent[0]!.payload.embeds[0].title.length).toBeLessThanOrEqual(256);
+});
+
+const hasHero = (await Store.loadHero()).records.length > 0; // HERO data is optional
+
+test.skipIf(!hasHero)("/hero: template variants get a dropdown and custom ids carry the command", async () => {
+  const { i, sent } = slash("Flight");
+  await lookup(i, hero);
+  const msg = sent[0]!.payload;
+  expect(msg.embeds[0].footer.text).toBe("HERO System 6e · Main6E · FLIGHT");
+  const menu = msg.components[0].components[0];
+  expect(menu.custom_id).toStartWith("hero:pick:");
+  expect(menu.options[1].description).toBe("6e power Base6E (powers)");
+  const pick = click(menu.custom_id, ["2"]);
+  await component(pick.i, hero);
+  expect(pick.sent[0]!.payload.embeds[0].footer.text).toBe("HERO System 6e · Vehicle6E · FLIGHT");
+  const share = msg.components[1].components.find((c: any) => c.custom_id?.startsWith("hero:share:"));
+  expect(share).toBeDefined();
+});
+
+test.skipIf(!hasHero)("/hero: autocomplete values resolve to one template's record", async () => {
+  let choices: any[] = [];
+  await complete({ options: { getFocused: () => "flight" }, respond: async (c: any) => void (choices = c) } as any, hero);
+  const vehicle = choices.find((c) => c.name === "Flight — 6e power Vehicle6E (powers)");
+  expect(hero.find(vehicle.value).map((r) => r[2].split("|")[2])).toEqual(["Vehicle6E"]);
+});
+
+test.skipIf(!hasHero)("/hero: id lookup and expiry message", async () => {
+  const { i, sent } = slash("ENERGYBLAST");
+  await lookup(i, hero);
+  expect(sent[0]!.payload.embeds[0].title).toBe("Blast");
+  const c = click("hero:next:deadbeef");
+  await component(c.i, hero);
+  expect(c.sent[0]!.payload.content).toBe("This result expired — run /hero again.");
+});
+
+test("/hero data missing leaves an empty store", async () => {
+  expect((await Store.loadHero("/nonexistent")).records).toEqual([]);
 });
