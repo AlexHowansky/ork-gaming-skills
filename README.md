@@ -6,40 +6,37 @@ The data comes from the `json-assets.zip` file attached to each upstream release
 
 ## Requirements
 
-- Python 3.10 or later (standard library only)
+- Python 3.6 or later (standard library only)
 - Network access to github.com
 - Claude Code, to use the skill
 
-## Extract the data and install the skill
+## Extract the data
 
 ```sh
-./install.sh                                  # latest pf2e and sf2e releases
-./install.sh --pf2e 8.5.0 --sf2e 1.5.0        # pin specific releases
-./install.sh --pf2e pf2e-8.5.0                # full tag form also works; unpinned game uses latest
+./extract.py                               # latest pf2e and sf2e releases
+./extract.py --pf2e 8.5.0 --sf2e 1.5.0     # pin specific releases
+./extract.py --pf2e pf2e-8.5.0             # full tag form also works; unpinned game uses latest
 ```
 
-This does two things:
+`extract.py` finds the latest release tags if none were given. It downloads each `json-assets.zip` into memory (nothing is written to disk) and writes `skill/pf2e-rules/data/` next to the script, wherever you run it from. Pass `--out DIR` to write somewhere else.
 
-1. It runs `extract.py`, which finds the latest release tags if none were given. It downloads each `json-assets.zip` into memory (nothing is written to disk) and writes `skill/pf2e-rules/data/`.
-2. It symlinks `skill/pf2e-rules` to `~/.claude/skills/pf2e-rules`.
-
-Start a new Claude Code session afterwards so the skill loads.
-
-To extract without installing the skill:
+## Install the skill
 
 ```sh
-python3 extract.py --out skill/pf2e-rules/data [--pf2e TAG] [--sf2e TAG]
+./install_skill.sh
 ```
+
+This symlinks `skill/pf2e-rules` to `~/.claude/skills/pf2e-rules`. Extract the data first. Start a new Claude Code session afterwards so the skill loads.
 
 ## Updating
 
-Run `./install.sh --check` to compare the installed data with the latest releases. It prints the installed and latest tag for each game, and exits with status 1 if either is out of date (or no data is installed), so it works in scripts:
+Run `./extract.py --check` to compare the installed data with the latest releases. It prints the installed and latest tag for each game, and exits with status 1 if either is out of date (or no data is installed), so it works in scripts:
 
 ```sh
-./install.sh --check || ./install.sh
+./extract.py --check || ./extract.py
 ```
 
-Run `./install.sh` again to pick up the newest releases. Because the skill is a symlink, the new data takes effect right away. `data/VERSION` records the release tags and asset URLs the data came from.
+Run `./extract.py` again to pick up the newest releases. Because the skill is a symlink, the new data takes effect right away without reinstalling. `data/VERSION` records the release tags and asset URLs the data came from.
 
 ## Querying the data by hand
 
@@ -59,12 +56,12 @@ There are two interchangeable Discord bots that answer `/pf <query>`: a Python o
 
 Common setup:
 
-1. Extract the data (`./install.sh`, or `python3 extract.py --out skill/pf2e-rules/data`).
+1. Extract the data (`./extract.py`).
 2. In the [Discord developer portal](https://discord.com/developers/applications), create an application, add a bot, and copy its token (from the **Bot** page, not the Public Key). No privileged intents are needed.
 3. Invite it with `https://discord.com/oauth2/authorize?client_id=<APPLICATION_ID>&scope=bot+applications.commands&permissions=19456` (View Channels, Send Messages, Embed Links).
 4. Register the slash command with `--sync` (below) once, and again whenever the command definition changes. Global commands can take a while to appear. Set `PF_GUILD_ID` in the env file to sync to a single server instantly while testing. If you synced an older version that also had `/sf`, this sync removes it.
 
-Both bots load all data into memory at startup, so restart the service after `./install.sh` updates the data.
+Both bots load all data into memory at startup, so restart the service after `./extract.py` updates the data.
 
 ### Python
 
@@ -104,7 +101,7 @@ Service: edit the paths and user in `bots/bun/pfbot-bun.service`, copy it to `/e
 
 ```
 extract.py                    # release json-assets.zip -> compact text
-install.sh                    # extract + link skill into ~/.claude/skills
+install_skill.sh              # link skill into ~/.claude/skills
 skill/pf2e-rules/
   SKILL.md                    # when Claude uses the skill; record format legend
   scripts/pf.py               # lookup / search tool

@@ -12,13 +12,14 @@ import urllib.request
 import zipfile
 from collections import Counter, defaultdict
 from pathlib import Path
+from typing import Dict
 
 # ---------------------------------------------------------------- lookups
 
-ID_NAME: dict[str, str] = {}
-LANG: dict[str, str] = {}
-SOURCES: dict[str, str] = {}  # lowercased publication title -> short code
-TITLES: dict[str, str] = {}  # short code -> publication title
+ID_NAME: Dict[str, str] = {}
+LANG: Dict[str, str] = {}
+SOURCES: Dict[str, str] = {}  # lowercased publication title -> short code
+TITLES: Dict[str, str] = {}  # short code -> publication title
 
 SIZES = {"tiny": "tiny", "sm": "sm", "med": "med", "lg": "lg", "huge": "huge", "grg": "garg"}
 ACTS = {"1": "1a", "2": "2a", "3": "3a", "reaction": "r", "free": "f"}
@@ -47,7 +48,7 @@ def fetch(url: str) -> bytes:
         sys.exit(f"error: {url}: {e.reason}")
 
 
-def latest_tags() -> dict[str, str]:
+def latest_tags() -> Dict[str, str]:
     """Newest non-draft, non-prerelease tag per game that has a json-assets.zip."""
     releases = json.loads(fetch(f"https://api.github.com/repos/{REPO}/releases?per_page=50"))
     tags = {}
@@ -723,7 +724,7 @@ def build_names(zips):
 def check(out: Path) -> int:
     """Compare the installed tags in out/VERSION against the latest releases. Returns 1 if any are outdated."""
     vf = out / "VERSION"
-    tags = [line.split()[0] for line in vf.read_text().splitlines() if line.strip()] if vf.exists() else []
+    tags = [line.split()[0] for line in vf.read_text(encoding="utf-8").splitlines() if line.strip()] if vf.exists() else []
     installed = {t.split("-", 1)[0]: t for t in tags}
     latest = latest_tags()
     stale = False
@@ -739,7 +740,8 @@ def main():
     ap = argparse.ArgumentParser(description=f"Extract from {REPO} release {ASSET} files.")
     for game in GAMES:
         ap.add_argument(f"--{game}", metavar="TAG", help=f"release tag, e.g. {game}-8.5.1 or 8.5.1 (default: latest)")
-    ap.add_argument("--out", default="skill/pf2e-rules/data", type=Path)
+    ap.add_argument("--out", default=Path(__file__).resolve().parent / "skill" / "pf2e-rules" / "data", type=Path,
+                    help="output directory (default: skill/pf2e-rules/data next to this script)")
     ap.add_argument("--check", action="store_true", help="compare installed data with the latest releases and exit")
     a = ap.parse_args()
     if a.check:
@@ -793,11 +795,11 @@ def main():
             old.unlink()
         for fname, lines in files.items():
             lines.sort(key=str.lower)
-            (out / f"{fname}.txt").write_text("\n".join(lines) + "\n")
+            (out / f"{fname}.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
         index.sort(key=str.lower)
-        (out / "index.txt").write_text("\n".join(index) + "\n")
-    (a.out / "sources.txt").write_text("\n".join(f"{c}|{t}" for c, t in sorted(TITLES.items())) + "\n")
-    (a.out / "VERSION").write_text("".join(f"{t} {asset_url(t)}\n" for t in tags.values()))
+        (out / "index.txt").write_text("\n".join(index) + "\n", encoding="utf-8")
+    (a.out / "sources.txt").write_text("\n".join(f"{c}|{t}" for c, t in sorted(TITLES.items())) + "\n", encoding="utf-8")
+    (a.out / "VERSION").write_text("".join(f"{t} {asset_url(t)}\n" for t in tags.values()), encoding="utf-8")
     for k, v in sorted(stats.items()):
         print(f"{v:6} {k}")
 

@@ -1,5 +1,5 @@
 // Tests for the data store and rendering; same cases as bots/python/test_render.py.
-// Needs extracted data (./install.sh).
+// Needs extracted data (./extract.py).
 import { beforeAll, describe, expect, test } from "bun:test";
 import * as render from "../src/render";
 import { encode, nameOf, SEP, Store, type Rec } from "../src/store";
