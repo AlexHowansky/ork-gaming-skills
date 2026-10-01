@@ -4,6 +4,7 @@
   pfbot.py                      run the bot (needs DISCORD_TOKEN)
   pfbot.py --sync               also register slash commands with Discord (global, or PF_GUILD_ID)
   pfbot.py --preview QUERY      print what the bot would show, without connecting
+  pfbot.py --verbose            log every interaction to the console
 """
 import argparse
 import asyncio
@@ -137,9 +138,40 @@ async def lookup(interaction, store, query):
                                             ephemeral=True)
 
 
-def build(store):
+def describe(interaction):
+    """One-line summary of an interaction for --verbose, or None if it isn't ours."""
+    data = interaction.data or {}
+    opts = {o["name"]: o for o in data.get("options", [])}
+    if interaction.type is discord.InteractionType.autocomplete and data.get("name") == "pf":
+        what = f'autocomplete "{opts.get("query", {}).get("value", "")}"'
+    elif interaction.type is discord.InteractionType.application_command and data.get("name") == "pf":
+        what = f'/pf "{opts.get("query", {}).get("value", "")}"'
+    elif interaction.type is discord.InteractionType.component:
+        # Views use random custom ids, so name the component by what the message shows for it.
+        comp = next((c for row in (interaction.message.components if interaction.message else [])
+                     for c in getattr(row, "children", [row]) if c.custom_id == data.get("custom_id")), None)
+        if "values" in data:
+            value = data["values"][0] if data["values"] else ""
+            chosen = next((o.label for o in getattr(comp, "options", []) if o.value == value), value)
+            what = f"select → {chosen}"
+        else:
+            what = f"button {getattr(comp, 'label', None) or data.get('custom_id')}"
+    else:
+        return None
+    where = f"guild {interaction.guild_id}" if interaction.guild_id else "DM"
+    return f"{interaction.user} ({where}): {what}"
+
+
+def build(store, verbose=False):
     client = discord.Client(intents=discord.Intents.default(), allowed_mentions=discord.AllowedMentions.none())
     tree = app_commands.CommandTree(client)
+
+    if verbose:
+        @client.event
+        async def on_interaction(interaction):
+            what = describe(interaction)
+            if what:
+                log.info("%s", what)
 
     @tree.command(name="pf", description="Look up a Pathfinder 2e or Starfinder 2e rule, spell, feat, creature, item…")
     @app_commands.describe(query="Name to look up (or text to search for)")
@@ -172,6 +204,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--sync", action="store_true", help="register slash commands with Discord on startup")
     ap.add_argument("--preview", metavar="QUERY", help="print rendered result and exit")
+    ap.add_argument("--verbose", action="store_true", help="log every interaction to the console")
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -198,7 +231,7 @@ def main():
     token = os.environ.get("DISCORD_TOKEN")
     if not token:
         sys.exit("DISCORD_TOKEN is not set")
-    client, tree = build(store)
+    client, tree = build(store, a.verbose)
     @client.event
     async def setup_hook():
         if a.sync:

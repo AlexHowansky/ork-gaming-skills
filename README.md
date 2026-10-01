@@ -72,6 +72,7 @@ cp bots/python/pfbot.env.example bots/python/pfbot.env && chmod 600 bots/python/
 
 set -a; . bots/python/pfbot.env; set +a
 bots/python/.venv/bin/python bots/python/pfbot.py --sync      # register /pf, then keep running
+bots/python/.venv/bin/python bots/python/pfbot.py --verbose   # also log each interaction to the console
 
 bots/python/.venv/bin/python bots/python/pfbot.py --preview "Red Dragon (Adult)"   # no Discord needed
 bots/python/.venv/bin/python -m unittest discover bots/python
@@ -89,6 +90,7 @@ bun install
 cp .env.example .env && chmod 600 .env   # set DISCORD_TOKEN; Bun loads .env automatically
 
 bun run sync     # register /pf, then keep running (later runs: bun run start)
+bun run start --verbose   # also log each interaction and gateway event to the console
 
 bun src/bot.ts --preview "Red Dragon (Adult)"   # no Discord needed
 bun test

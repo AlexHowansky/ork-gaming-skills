@@ -4,6 +4,7 @@
  *   bun src/bot.ts                  run the bot (needs DISCORD_TOKEN)
  *   bun src/bot.ts --sync           also register slash commands with Discord (global, or PF_GUILD_ID)
  *   bun src/bot.ts --preview QUERY  print what the bot would show, without connecting
+ *   bun src/bot.ts --verbose        log every interaction and gateway event to the console
  */
 import {
   ActionRowBuilder,
@@ -191,9 +192,41 @@ export const command = new SlashCommandBuilder()
     o.setName("query").setDescription("Name to look up (or text to search for)").setRequired(true).setAutocomplete(true),
   );
 
-export function build(store: Store): Client {
+/** One-line summary of an interaction for --verbose, or null if it isn't ours. */
+export function describe(interaction: Interaction): string | null {
+  let what: string;
+  if (interaction.isAutocomplete() && interaction.commandName === "pf")
+    what = `autocomplete ${JSON.stringify(interaction.options.getFocused())}`;
+  else if (interaction.isChatInputCommand() && interaction.commandName === "pf")
+    what = `/pf ${JSON.stringify(interaction.options.getString("query") ?? "")}`;
+  else if ((interaction.isButton() || interaction.isStringSelectMenu()) && interaction.customId.startsWith(`${PREFIX}:`)) {
+    const [, action, id] = interaction.customId.split(":");
+    if (interaction.isButton()) what = `button ${action}`;
+    else {
+      const value = interaction.values[0] ?? "";
+      const chosen = id ? states.get(id)?.choices[Number(value)] : undefined;
+      what = `select ${action} → ${chosen ? nameOf(chosen) : value}`;
+    }
+  } else return null;
+  const where = interaction.guildId ? `guild ${interaction.guildId}` : "DM";
+  return `${interaction.user.tag} (${where}): ${what}`;
+}
+
+const stamp = () => new Date().toISOString();
+
+export function build(store: Store, verbose = false): Client {
   const client = new Client({ intents: [GatewayIntentBits.Guilds], allowedMentions: { parse: [] } });
+  if (verbose) {
+    client.on(Events.Warn, (msg) => console.log(`${stamp()} warn: ${msg}`));
+    client.on(Events.ShardDisconnect, (event, shard) => console.log(`${stamp()} shard ${shard} disconnected (${event.code})`));
+    client.on(Events.ShardReconnecting, (shard) => console.log(`${stamp()} shard ${shard} reconnecting`));
+    client.on(Events.ShardResume, (shard, replayed) => console.log(`${stamp()} shard ${shard} resumed (${replayed} events replayed)`));
+    client.on(Events.ShardError, (error, shard) => console.log(`${stamp()} shard ${shard} error: ${error.message}`));
+  }
   client.on(Events.InteractionCreate, async (interaction: Interaction) => {
+    // Describe before dispatch: picking from a dropdown changes the state it reads.
+    const what = verbose ? describe(interaction) : null;
+    const start = performance.now();
     try {
       if (interaction.isAutocomplete() && interaction.commandName === "pf") await complete(interaction, store);
       else if (interaction.isChatInputCommand() && interaction.commandName === "pf") await lookup(interaction, store);
@@ -207,6 +240,8 @@ export function build(store: Store): Client {
         if (interaction.replied || interaction.deferred) await interaction.followUp(msg);
         else await interaction.reply(msg);
       } catch {}
+    } finally {
+      if (what) console.log(`${stamp()} ${what} [${Math.round(performance.now() - start)} ms]`);
     }
   });
   return client;
@@ -238,7 +273,7 @@ async function main() {
     console.error("DISCORD_TOKEN is not set");
     process.exit(1);
   }
-  const client = build(store);
+  const client = build(store, args.includes("--verbose"));
   client.once(Events.ClientReady, async (c) => {
     console.log(`logged in as ${c.user.tag}; data ${JSON.stringify(Object.fromEntries(store.version))}`);
     if (args.includes("--sync")) {
