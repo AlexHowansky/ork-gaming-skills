@@ -51,6 +51,38 @@ $S "Goblin Warrior" -f creature-lore # creature background (opt-in file)
 $S -s 'flank' -f rules               # full-text regex search, lists matches
 ```
 
+## Discord bot
+
+`bot/` is a Discord bot that answers `/pf <query>` (Pathfinder 2e) and `/sf <query>` (Starfinder 2e) using the same data and matching as `pf.py`. Names autocomplete as you type. Results are private to the person who asked, with a **Share to channel** button to post them. When a query matches several records, a dropdown lets you switch between them. Long records page with ◀ ▶, and creatures with background text get a **Lore** button. If no name matches, the bot falls back to a full-text search and lists the hits.
+
+Setup:
+
+1. Extract the data (`./install.sh`, or `python3 extract.py --out skill/pf2e-rules/data`).
+2. In the [Discord developer portal](https://discord.com/developers/applications), create an application, add a bot, and copy its token. No privileged intents are needed.
+3. Invite it with `https://discord.com/oauth2/authorize?client_id=<APPLICATION_ID>&scope=bot+applications.commands&permissions=19456` (View Channels, Send Messages, Embed Links).
+4. Install and configure:
+   ```sh
+   python3 -m venv bot/.venv
+   bot/.venv/bin/pip install -r bot/requirements.txt
+   cp bot/pfbot.env.example bot/pfbot.env && chmod 600 bot/pfbot.env   # set DISCORD_TOKEN
+   ```
+5. Register the slash commands once, and again whenever the command definitions change:
+   ```sh
+   set -a; . bot/pfbot.env; set +a
+   bot/.venv/bin/python bot/pfbot.py --sync
+   ```
+   Global commands can take a while to appear. Set `PF_GUILD_ID` to sync to a single server instantly while testing.
+6. Run it as a service: edit the paths and user in `bot/pfbot.service`, copy it to `/etc/systemd/system/`, then `sudo systemctl enable --now pfbot`.
+
+The bot loads all data into memory at startup, so restart it (`sudo systemctl restart pfbot`) after `./install.sh` updates the data.
+
+To check formatting without connecting to Discord:
+
+```sh
+bot/.venv/bin/python bot/pfbot.py --preview pf2e "Red Dragon (Adult)"
+bot/.venv/bin/python -m unittest discover bot
+```
+
 ## Layout
 
 ```
@@ -62,6 +94,11 @@ skill/pf2e-rules/
   data/                       # generated, not committed (see .gitignore)
     VERSION  sources.txt      # release tags; source-code abbreviations
     pf2e/*.txt  sf2e/*.txt    # one file per category, plus index.txt
+bot/
+  pfbot.py                    # Discord bot: /pf and /sf commands, views
+  store.py                    # in-memory data, lookup/search/autocomplete via pf.py
+  render.py                   # record -> Discord markdown pages
+  pfbot.service               # sample systemd unit
 ```
 
 The generated data is not committed. It's reproducible from the releases, and it's Paizo content published under the OGL/ORC licenses.

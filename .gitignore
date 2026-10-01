@@ -1,3 +1,5 @@
-skill/pf2e-rules/data/
 __pycache__/
+bot/.venv/
+bot/pfbot.env
+skill/pf2e-rules/data/
 *.pyc
