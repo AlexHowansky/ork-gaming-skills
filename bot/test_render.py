@@ -16,7 +16,7 @@ def setUpModule():
 
 
 def first(game, query):
-    return STORE.find(game, query)[0]
+    return next(r for r in STORE.find(query) if r[0] == game)
 
 
 class Limits(unittest.TestCase):
@@ -32,7 +32,7 @@ class Limits(unittest.TestCase):
 
     def test_largest_records(self):
         for game in ("pf2e", "sf2e"):
-            biggest = sorted(STORE.records[game], key=lambda r: len(r[2]))[-20:]
+            biggest = sorted((r for r in STORE.records if r[0] == game), key=lambda r: len(r[2]))[-20:]
             for rec in biggest:
                 self.check(rec)
 
@@ -92,28 +92,36 @@ class Lookup(unittest.TestCase):
     def test_encoded_pick_round_trip(self):
         rec = first("pf2e", "Fireball")
         value = encode(rec)
-        self.assertEqual(value, f"spells{SEP}Fireball")
-        self.assertEqual(STORE.find("pf2e", value), [rec])
+        self.assertEqual(value, f"pf2e{SEP}spells{SEP}Fireball")
+        self.assertEqual(STORE.find(value), [rec])
 
     def test_encoded_pick_disambiguates_files(self):
-        hits = [r for r in STORE.records["pf2e"] if name_of(r) == "Allegro"]
+        hits = [r for r in STORE.records if name_of(r) == "Allegro"]
         self.assertGreater(len(hits), 1)
         for rec in hits:
-            self.assertEqual(STORE.find("pf2e", encode(rec)), [rec])
+            self.assertEqual(STORE.find(encode(rec)), [rec])
+
+    def test_encoded_pick_disambiguates_games(self):
+        hits = [r for r in STORE.records if name_of(r) == "GM Screen > DCs by Level"]
+        self.assertEqual({r[0] for r in hits}, {"pf2e", "sf2e"})
+        for rec in hits:
+            self.assertEqual(STORE.find(encode(rec)), [rec])
 
     def test_suggest_prefix_first(self):
-        names = [name_of(r) for r in STORE.suggest("pf2e", "fireb")]
+        names = [name_of(r) for r in STORE.suggest("fireb")]
         self.assertEqual(names[0], "Fireball")
         self.assertLessEqual(len(names), 25)
-        self.assertEqual(STORE.suggest("pf2e", "  "), [])
+        self.assertEqual(STORE.suggest("  "), [])
 
-    def test_games_are_separate(self):
-        self.assertTrue(STORE.find("sf2e", "Laser Pistol"))
-        self.assertFalse(STORE.find("pf2e", "Laser Pistol"))
+    def test_finds_both_games(self):
+        self.assertEqual({r[0] for r in STORE.find("Laser Pistol")}, {"sf2e"})
+        self.assertEqual([r[0] for r in STORE.find("Fireball")], ["pf2e", "sf2e"])  # PF2e listed first
+        self.assertEqual({r[0] for r in STORE.find("GM Screen > DCs by Level")}, {"pf2e", "sf2e"})
+        self.assertIn("sf2e", {r[0] for r in STORE.suggest("laser pis")})
 
     def test_search_fallback_prefers_rules(self):
-        self.assertFalse(STORE.find("pf2e", "magic missile"))
-        (rec, _), *_ = STORE.search("pf2e", "magic missile")
+        self.assertFalse(STORE.find("magic missile"))
+        (rec, _), *_ = STORE.search("magic missile")
         self.assertEqual(rec[1], "rules")
 
     def test_lore(self):

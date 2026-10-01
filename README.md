@@ -53,7 +53,7 @@ $S -s 'flank' -f rules               # full-text regex search, lists matches
 
 ## Discord bot
 
-`bot/` is a Discord bot that answers `/pf <query>` (Pathfinder 2e) and `/sf <query>` (Starfinder 2e) using the same data and matching as `pf.py`. Names autocomplete as you type. Results are private to the person who asked, with a **Share to channel** button to post them. When a query matches several records, a dropdown lets you switch between them. Long records page with ◀ ▶, and creatures with background text get a **Lore** button. If no name matches, the bot falls back to a full-text search and lists the hits.
+`bot/` is a Discord bot that answers `/pf <query>` using the same data and matching as `pf.py`. It searches Pathfinder 2e and Starfinder 2e together, and each result says which game it's from. Names autocomplete as you type. Results are private to the person who asked, with a **Share to channel** button to post them. When a query matches several records (including the same name in both games), a dropdown lets you switch between them. Long records page with ◀ ▶, and creatures with background text get a **Lore** button. If no name matches, the bot falls back to a full-text search and lists the hits.
 
 Setup:
 
@@ -71,7 +71,7 @@ Setup:
    set -a; . bot/pfbot.env; set +a
    bot/.venv/bin/python bot/pfbot.py --sync
    ```
-   Global commands can take a while to appear. Set `PF_GUILD_ID` to sync to a single server instantly while testing.
+   Global commands can take a while to appear. Set `PF_GUILD_ID` to sync to a single server instantly while testing. If you synced an older version that also had `/sf`, this sync removes it.
 6. Run it as a service: edit the paths and user in `bot/pfbot.service`, copy it to `/etc/systemd/system/`, then `sudo systemctl enable --now pfbot`.
 
 The bot loads all data into memory at startup, so restart it (`sudo systemctl restart pfbot`) after `./install.sh` updates the data.
@@ -79,7 +79,7 @@ The bot loads all data into memory at startup, so restart it (`sudo systemctl re
 To check formatting without connecting to Discord:
 
 ```sh
-bot/.venv/bin/python bot/pfbot.py --preview pf2e "Red Dragon (Adult)"
+bot/.venv/bin/python bot/pfbot.py --preview "Red Dragon (Adult)"
 bot/.venv/bin/python -m unittest discover bot
 ```
 
@@ -95,7 +95,7 @@ skill/pf2e-rules/
     VERSION  sources.txt      # release tags; source-code abbreviations
     pf2e/*.txt  sf2e/*.txt    # one file per category, plus index.txt
 bot/
-  pfbot.py                    # Discord bot: /pf and /sf commands, views
+  pfbot.py                    # Discord bot: /pf command, views
   store.py                    # in-memory data, lookup/search/autocomplete via pf.py
   render.py                   # record -> Discord markdown pages
   pfbot.service               # sample systemd unit

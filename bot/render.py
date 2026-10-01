@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 PAGE = 4000  # embed description limit is 4096
 COLORS = {"pf2e": 0x5D0000, "sf2e": 0x1F6FB2}
 GAME_NAMES = {"pf2e": "Pathfinder 2e", "sf2e": "Starfinder 2e"}
+GAME_TAGS = {"pf2e": "PF2e", "sf2e": "SF2e"}
 
 ACTIONS = {"1a": "◆", "2a": "◆◆", "3a": "◆◆◆", "r": "⟲", "f": "◇", "0": "◇"}
 LETTER_ACTIONS = {"A": "◆", "D": "◆◆", "T": "◆◆◆", "R": "⟲", "F": "◇"}

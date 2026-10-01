@@ -1,6 +1,7 @@
 """In-memory copy of the extracted data, shared by all bot commands.
 
-Records are (game, file stem, line) tuples, the same shape pf.py uses.
+Records are (game, file stem, line) tuples, the same shape pf.py uses. Lookups cover
+both games; each record's game travels with it.
 """
 import os
 import re
@@ -15,7 +16,7 @@ GAMES = ("pf2e", "sf2e")
 # Full-text search order: rules text and player-facing options before stat blocks,
 # so e.g. a legacy name finds the Remaster Changes page before creatures that mention it.
 SEARCH_FIRST = ("rules", "conditions", "actions", "traits", "spells", "feats", "class-features", "equipment")
-SEP = "§"  # joins file stem and name in autocomplete values
+SEP = "§"  # joins game, file stem and name in autocomplete values
 
 
 def name_of(rec):
@@ -29,18 +30,18 @@ def kind_of(rec):
 
 def encode(rec):
     """Autocomplete value that resolves back to exactly this record."""
-    return f"{rec[1]}{SEP}{name_of(rec)}"
+    return f"{rec[0]}{SEP}{rec[1]}{SEP}{name_of(rec)}"
 
 
 class Store:
     def __init__(self, data=None):
         self.data = Path(data or os.environ.get("PF_DATA") or pf.DATA)
         pf.DATA = self.data
-        self.records = {g: pf.load(g) for g in GAMES}
+        self.records = [r for g in GAMES for r in pf.load(g)]
         self.lore = {g: {name_of(r): r for r in pf.load(g, "creature-lore")} for g in GAMES}
         order = {stem: i for i, stem in enumerate(SEARCH_FIRST)}
-        self.search_order = {g: sorted(self.records[g], key=lambda r: order.get(r[1], len(order))) for g in GAMES}
-        self.names = {g: [(name_of(r).lower(), r) for r in self.records[g]] for g in GAMES}
+        self.search_order = sorted(self.records, key=lambda r: order.get(r[1], len(order)))
+        self.names = [(name_of(r).lower(), r) for r in self.records]
         self.sources = {}
         src = self.data / "sources.txt"
         if src.exists():
@@ -56,26 +57,27 @@ class Store:
                     if tag.startswith(g + "-"):
                         self.version[g] = tag
 
-    def find(self, game, query):
+    def find(self, query):
         """Records for a query: an encoded autocomplete pick, else pf.rank() name matching."""
-        stem, sep, name = query.partition(SEP)
-        if sep:
-            hits = [r for r in self.records[game] if r[1] == stem and name_of(r) == name]
+        parts = query.split(SEP)
+        if len(parts) == 3:
+            game, stem, name = parts
+            hits = [r for r in self.records if r[0] == game and r[1] == stem and name_of(r) == name]
             if hits:
                 return hits
             query = name
-        return pf.rank(self.records[game], query.strip())
+        return pf.rank(self.records, query.strip())
 
-    def search(self, game, text, limit=25):
-        return pf.grep(self.search_order[game], re.escape(text.strip()), limit)
+    def search(self, text, limit=25):
+        return pf.grep(self.search_order, re.escape(text.strip()), limit)
 
-    def suggest(self, game, current, limit=25):
+    def suggest(self, current, limit=25):
         """Autocomplete candidates: prefix matches first, then substring matches."""
         q = current.strip().lower()
         if not q:
             return []
         prefix, sub = [], []
-        for n, r in self.names[game]:
+        for n, r in self.names:
             if n.startswith(q):
                 prefix.append(r)
             elif q in n:

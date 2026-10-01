@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Discord bot: /pf and /sf look up Pathfinder 2e / Starfinder 2e records.
+"""Discord bot: /pf looks up Pathfinder 2e and Starfinder 2e records.
 
   pfbot.py                      run the bot (needs DISCORD_TOKEN)
   pfbot.py --sync               also register slash commands with Discord (global, or PF_GUILD_ID)
-  pfbot.py --preview GAME QUERY print what the bot would show, without connecting
+  pfbot.py --preview QUERY      print what the bot would show, without connecting
 """
 import argparse
 import asyncio
@@ -33,7 +33,12 @@ def embed(r, store, page=0):
 
 def option(rec, value):
     return discord.SelectOption(label=trunc(name_of(rec)), value=value,
-                                description=trunc(f"{kind_of(rec)} ({rec[1]})"))
+                                description=trunc(label(rec)))
+
+
+def label(rec):
+    """'PF2e spell 3 (spells)': tells apart same-named records across games and files."""
+    return f"{render.GAME_TAGS.get(rec[0], rec[0])} {kind_of(rec)} ({rec[1]})"
 
 
 def make_view(store, rec, choices, page=0, placeholder="Other matches"):
@@ -91,27 +96,26 @@ async def show(interaction, store, rec, choices, edit=False, placeholder="Other 
         await interaction.response.send_message(embed=e, view=view, ephemeral=True)
 
 
-def search_embed(game, query, hits):
+def search_embed(query, hits):
     desc = "Text matches:"
     for (g, stem, line), m in hits:
         s = max(0, m.start() - 50)
         snippet = render.esc(line[s:m.end() + 50].replace("|", " · "))
-        entry = f"\n**{render.esc(name_of((g, stem, line)))}** ({stem}): …{snippet}…"
+        entry = f"\n**{render.esc(name_of((g, stem, line)))}** ({render.GAME_TAGS[g]} {stem}): …{snippet}…"
         if len(desc) + len(entry) > render.PAGE:
             break
         desc += entry
-    e = discord.Embed(title=trunc(f"No name matches “{query}”", 256), description=desc,
-                      color=render.COLORS.get(game))
-    e.set_footer(text=render.GAME_NAMES[game] + " · pick one below")
+    e = discord.Embed(title=trunc(f"No name matches “{query}”", 256), description=desc)
+    e.set_footer(text="Pick one below")
     return e
 
 
-async def lookup(interaction, store, game, query):
-    hits = store.find(game, query)
+async def lookup(interaction, store, query):
+    hits = store.find(query)
     if hits:
         await show(interaction, store, hits[0], hits[:25] if len(hits) > 1 else [])
         return
-    found = await asyncio.to_thread(store.search, game, query)
+    found = await asyncio.to_thread(store.search, query)
     if not found:
         await interaction.response.send_message(f"No match for “{render.esc(query)}”.", ephemeral=True)
         return
@@ -129,7 +133,7 @@ async def lookup(interaction, store, game, query):
             chosen = recs[int(inter.data["values"][0])]
             await show(inter, store, chosen, recs, edit=True, placeholder="Other text matches")
 
-    await interaction.response.send_message(embed=search_embed(game, query, found), view=SearchView(),
+    await interaction.response.send_message(embed=search_embed(query, found), view=SearchView(),
                                             ephemeral=True)
 
 
@@ -137,27 +141,20 @@ def build(store):
     client = discord.Client(intents=discord.Intents.default(), allowed_mentions=discord.AllowedMentions.none())
     tree = app_commands.CommandTree(client)
 
-    def choices(game, current):
+    @tree.command(name="pf", description="Look up a Pathfinder 2e or Starfinder 2e rule, spell, feat, creature, item…")
+    @app_commands.describe(query="Name to look up (or text to search for)")
+    async def pf(interaction: discord.Interaction, query: str):
+        await lookup(interaction, store, query)
+
+    @pf.autocomplete("query")
+    async def complete(interaction: discord.Interaction, current: str):
         out = []
-        for rec in store.suggest(game, current):
+        for rec in store.suggest(current):
             value = encode(rec)
             if len(value) > 100:
                 value = name_of(rec)[:100]
-            out.append(app_commands.Choice(name=trunc(f"{name_of(rec)} — {kind_of(rec)} ({rec[1]})"), value=value))
+            out.append(app_commands.Choice(name=trunc(f"{name_of(rec)} — {label(rec)}"), value=value))
         return out
-
-    def register(game, cmd, desc):
-        @tree.command(name=cmd, description=f"Look up a {desc} rule, spell, feat, creature, item…")
-        @app_commands.describe(query="Name to look up (or text to search for)")
-        async def callback(interaction: discord.Interaction, query: str):
-            await lookup(interaction, store, game, query)
-
-        @callback.autocomplete("query")
-        async def complete(interaction: discord.Interaction, current: str):
-            return choices(game, current)
-
-    register("pf2e", "pf", "Pathfinder 2e")
-    register("sf2e", "sf", "Starfinder 2e")
 
     @tree.error
     async def on_error(interaction, error):
@@ -174,25 +171,25 @@ def build(store):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--sync", action="store_true", help="register slash commands with Discord on startup")
-    ap.add_argument("--preview", nargs=2, metavar=("GAME", "QUERY"), help="print rendered result and exit")
+    ap.add_argument("--preview", metavar="QUERY", help="print rendered result and exit")
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
     store = Store()
 
     if a.preview:
-        game, query = a.preview
-        hits = store.find(game, query)
+        query = a.preview
+        hits = store.find(query)
         if not hits:
-            found = store.search(game, query)
-            for (g, stem, line), m in found:
-                print(f"[{stem}] {name_of((g, stem, line))}")
+            found = store.search(query)
+            for rec, m in found:
+                print(f"[{rec[0]}/{rec[1]}] {name_of(rec)}")
             if not found:
                 print(f"No match for “{query}”.")
             return
         print(render.to_text(render.render(hits[0]), store))
         if len(hits) > 1:
-            print("\nOther matches: " + "; ".join(name_of(h) for h in hits[1:25]))
+            print("\nOther matches: " + "; ".join(f"{name_of(h)} [{h[0]}/{h[1]}]" for h in hits[1:25]))
         lore = store.lore_for(hits[0])
         if lore:
             print("\n(has lore)")
