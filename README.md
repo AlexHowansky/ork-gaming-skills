@@ -94,7 +94,7 @@ Common setup:
 1. Extract the data.
 2. In the [Discord developer portal](https://discord.com/developers/applications), create an application, add a bot, and copy its token (from the **Bot** page, not the Public Key). No privileged intents are needed.
 3. Invite it with `https://discord.com/oauth2/authorize?client_id=<APPLICATION_ID>&scope=bot+applications.commands&permissions=19456` (View Channels, Send Messages, Embed Links).
-4. Register the slash commands with `--sync` (below) once, and again whenever the command definitions change or you add or remove the HERO data. Global commands can take a while to appear. Set `PF_GUILD_ID` in the env file to sync to a single server instantly while testing. If you synced an older version that also had `/sf`, this sync removes it.
+4. Register the slash commands with `--sync` (below) once, and again whenever the command definitions change or you add or remove the HERO data. Global commands can take a while to appear. Set `PF_GUILD_ID` in the env file to sync to a single server instantly while testing. If you switch from the Bun bot to the Python bot, this sync removes `/sf`, which only the Bun bot has.
 
 Both bots load all data into memory at startup, so restart the service after `./extract_pf2e.py` or `./extract_hero.py` updates the data.
 
@@ -125,7 +125,7 @@ cd bots/bun
 bun install
 cp .env.example .env && chmod 600 .env   # set DISCORD_TOKEN; Bun loads .env automatically
 
-bun run sync     # register /pf and /hero, then keep running (later runs: bun run start)
+bun run sync     # register /pf, /sf and /hero, then keep running (later runs: bun run start)
 bun run start --verbose   # also log each interaction and gateway event to the console
 
 bun src/bot.ts --preview "Red Dragon (Adult)"   # no Discord needed
@@ -133,6 +133,8 @@ bun src/bot.ts --preview "Flight" --hero        # same, for /hero
 bun test
 bun run typecheck
 ```
+
+The Bun bot also has `/sf`, which searches Pathfinder 2e and Starfinder 2e together. Its `/pf` searches only Pathfinder 2e. `bun src/bot.ts --preview QUERY --sf` previews `/sf`.
 
 To have `/hero` answer with only some editions, set `HERO_EDITIONS` in `.env` to a comma-separated list from `6e`, `5e` (default: both). Lookups, autocomplete, full-text search and the dropdown all skip the other editions.
 
@@ -162,7 +164,7 @@ bots/python/
   render.py                   # record -> Discord markdown pages
   pfbot.service               # sample systemd unit
 bots/bun/
-  src/bot.ts                  # Discord bot (discord.js): /pf and /hero commands, components
+  src/bot.ts                  # Discord bot (discord.js): /pf, /sf and /hero commands, components
   src/store.ts                # port of pf.py + hero.py + store.py
   src/render.ts               # port of render.py (same output)
   test/                       # bun test

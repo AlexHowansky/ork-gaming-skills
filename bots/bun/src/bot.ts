@@ -1,10 +1,12 @@
 /**
- * Discord bot: /pf looks up Pathfinder 2e and Starfinder 2e records, /hero HERO System ones.
+ * Discord bot: /pf looks up Pathfinder 2e records, /sf Pathfinder 2e and Starfinder 2e ones,
+ * /hero HERO System ones.
  * A port of bots/python/pfbot.py.
  *
  *   bun src/bot.ts                  run the bot (needs DISCORD_TOKEN)
  *   bun src/bot.ts --sync           also register slash commands with Discord (global, or PF_GUILD_ID)
  *   bun src/bot.ts --preview QUERY  print what the bot would show, without connecting
+ *   bun src/bot.ts --preview QUERY --sf     the same, for /sf (default: /pf)
  *   bun src/bot.ts --preview QUERY --hero   the same, for /hero
  *   bun src/bot.ts --verbose        log every interaction and gateway event to the console
  *
@@ -194,7 +196,8 @@ export async function component(interaction: ButtonInteraction | StringSelectMen
 }
 
 const DESCRIPTIONS: Record<Store["command"], string> = {
-  pf: "Look up a Pathfinder 2e or Starfinder 2e rule, spell, feat, creature, item…",
+  pf: "Look up a Pathfinder 2e rule, spell, feat, creature, item…",
+  sf: "Look up a Pathfinder 2e or Starfinder 2e rule, spell, feat, creature, item…",
   hero: "Look up a HERO System power, advantage, limitation, skill, talent, maneuver…",
 };
 
@@ -274,13 +277,14 @@ export function build(stores: Store[], verbose = false): Client {
 
 async function main() {
   const args = Bun.argv.slice(2);
-  const stores = [await Store.load(), await Store.loadHero()];
+  const sf = await Store.load();
+  const stores = [sf.only("pf", ["pf2e"]), sf, await Store.loadHero()];
   const live = stores.filter((s) => s.records.length);
-  if (!stores[1]!.records.length) console.log(`no HERO data in ${stores[1]!.data}; /hero is disabled`);
+  if (!stores[2]!.records.length) console.log(`no HERO data in ${stores[2]!.data}; /hero is disabled`);
 
   const p = args.indexOf("--preview");
   if (p >= 0) {
-    const store = stores[args.includes("--hero") ? 1 : 0]!;
+    const store = stores[args.includes("--hero") ? 2 : args.includes("--sf") ? 1 : 0]!;
     const query = args[p + 1] ?? "";
     const hits = store.find(query);
     if (!hits.length) {

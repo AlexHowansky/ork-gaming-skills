@@ -3,8 +3,9 @@
  *
  * A port of skill/pf2e/scripts/pf.py and skill/hero/scripts/hero.py (load/rank/grep) and
  * bots/python/store.py. Records are [game, file stem, line] tuples. Store.load() holds PF2e
- * and SF2e for /pf; Store.loadHero() holds HERO System 6e and 5e for /hero. Lookups cover
- * every game in the store; each record's game travels with it.
+ * and SF2e for /sf, and its only("pf", ["pf2e"]) the PF2e part for /pf; Store.loadHero() holds
+ * HERO System 6e and 5e for /hero. Lookups cover every game in the store; each record's game
+ * travels with it.
  */
 import { readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -123,11 +124,12 @@ export class Store {
 
   private constructor(
     readonly data: string,
-    readonly command: "pf" | "hero", // slash command it answers; also its component custom id prefix
+    readonly command: "pf" | "sf" | "hero", // slash command it answers; also its component custom id prefix
   ) {}
 
+  /** PF2e and SF2e records for /sf. */
   static async load(data?: string): Promise<Store> {
-    const s = new Store(data || process.env.PF_DATA || DEFAULT_DATA, "pf");
+    const s = new Store(data || process.env.PF_DATA || DEFAULT_DATA, "sf");
     for (const g of GAMES) s.records.push(...(await s.read(g)));
     for (const g of GAMES) s.lore.set(g, new Map((await s.read(g, "creature-lore")).map((r) => [nameOf(r), r])));
     s.index();
@@ -158,6 +160,17 @@ export class Store {
     s.index();
     const ver = Bun.file(join(s.data, "VERSION"));
     if (await ver.exists()) s.version.set("hero", (await ver.text()).split(",", 1)[0]!.trim());
+    return s;
+  }
+
+  /** A store for `command` holding only this one's records from `games`, sharing the record data. */
+  only(command: Store["command"], games: readonly string[]): Store {
+    const s = new Store(this.data, command);
+    s.records = this.records.filter((r) => games.includes(r[0]));
+    for (const g of games) if (this.lore.has(g)) s.lore.set(g, this.lore.get(g)!);
+    s.sources = this.sources;
+    for (const [g, v] of this.version) if (games.includes(g)) s.version.set(g, v);
+    s.index();
     return s;
   }
 

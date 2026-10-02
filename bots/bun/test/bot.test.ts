@@ -5,10 +5,12 @@ import { MessageFlags } from "discord.js";
 import { command, complete, component, lookup } from "../src/bot";
 import { heroEditions, nameOf, Store } from "../src/store";
 
-let store: Store;
+let store: Store; // /sf: PF2e and SF2e
+let pf: Store;
 let hero: Store;
 beforeAll(async () => {
   store = await Store.load();
+  pf = store.only("pf", ["pf2e"]);
   hero = await Store.loadHero();
 });
 
@@ -41,10 +43,10 @@ function click(customId: string, values?: string[]) {
 
 const ids = (payload: any): string[] => payload.components.flatMap((row: any) => row.components.map((c: any) => c.custom_id));
 const button = (payload: any, action: string) =>
-  payload.components.flatMap((row: any) => row.components).find((c: any) => c.custom_id?.startsWith(`pf:${action}:`));
+  payload.components.flatMap((row: any) => row.components).find((c: any) => c.custom_id?.startsWith(`sf:${action}:`));
 
 test("command definitions", () => {
-  for (const name of ["pf", "hero"] as const) {
+  for (const name of ["pf", "sf", "hero"] as const) {
     const def = command(name).toJSON();
     expect(def.name).toBe(name);
     expect(def.options?.[0]).toMatchObject({ name: "query", required: true, autocomplete: true });
@@ -73,19 +75,19 @@ test("lookup replies privately with dropdown and buttons; paging, lore and share
   expect(button(msg, "lore")).toBeDefined();
   const id = ids(msg)[0]!.split(":")[2];
 
-  const next = click(`pf:next:${id}`);
+  const next = click(`sf:next:${id}`);
   await component(next.i, store);
   expect(next.sent[0]!.kind).toBe("update");
   expect(next.sent[0]!.payload.embeds[0].footer.text).toContain("Page 2/");
   expect(button(next.sent[0]!.payload, "prev").disabled).toBe(false);
 
-  const share = click(`pf:share:${id}`);
+  const share = click(`sf:share:${id}`);
   await component(share.i, store);
   expect(share.sent[0]!.kind).toBe("reply");
   expect(share.sent[0]!.payload.flags).toBeUndefined(); // public
   expect(share.sent[0]!.payload.embeds[0].footer.text).toContain("Page 2/");
 
-  const lore = click(`pf:lore:${id}`);
+  const lore = click(`sf:lore:${id}`);
   await component(lore.i, store);
   expect(lore.sent[0]!.payload.flags).toBe(MessageFlags.Ephemeral);
   expect(lore.sent[0]!.payload.embeds[0].title).toBe("Adamantine Dragon (Adult)");
@@ -102,6 +104,23 @@ test("several matches get a dropdown; picking switches record", async () => {
   await component(pick.i, store);
   expect(pick.sent[0]!.kind).toBe("update");
   expect(pick.sent[0]!.payload.embeds[0].footer.text).toStartWith("Starfinder 2e");
+});
+
+test("/pf only answers with PF2e; /sf with both", async () => {
+  expect(pf.records.length).toBeGreaterThan(0);
+  expect(pf.records.every((r) => r[0] === "pf2e")).toBe(true);
+  expect(pf.find("Fireball").map((r) => r[0])).toEqual(["pf2e"]);
+  expect(pf.find("Laser Pistol")).toEqual([]);
+  expect(pf.suggest("laser pis").some((r) => r[0] === "sf2e")).toBe(false);
+  expect(pf.search("laser pistol").every((h) => h.rec[0] === "pf2e")).toBe(true);
+  expect(pf.loreFor(pf.find("Goblin Warrior")[0]!)).toBeDefined();
+
+  const { i, sent } = slash("Fireball");
+  await lookup(i, pf);
+  const msg = sent[0]!.payload;
+  expect(msg.embeds[0].footer.text).toStartWith("Pathfinder 2e");
+  expect(ids(msg).every((id) => id.startsWith("pf:"))).toBe(true);
+  expect(msg.components.length).toBe(1); // no dropdown: the SF2e Fireball is left out
 });
 
 test("no name match falls back to text search", async () => {
@@ -126,7 +145,7 @@ test("nothing found", async () => {
 });
 
 test("expired or unknown state", async () => {
-  const c = click("pf:next:deadbeef");
+  const c = click("sf:next:deadbeef");
   await component(c.i, store);
   expect(c.sent[0]!.payload.content).toContain("expired");
 });
