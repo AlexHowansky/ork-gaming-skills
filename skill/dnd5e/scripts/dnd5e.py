@@ -12,6 +12,7 @@ from pathlib import Path
 
 DATA = Path(__file__).resolve().parent.parent / "data"
 EDITIONS = ("2024", "2014")  # 2024 first
+OPT_IN = {"monster-lore"}  # only searched when named with -f
 
 
 def files(edition, fname):
@@ -20,7 +21,7 @@ def files(edition, fname):
         if (edition and ed != edition) or not ed_dir.is_dir():
             continue
         for f in sorted(ed_dir.glob("*.txt")):
-            if f.stem == "index" or (fname and f.stem != fname):
+            if f.stem == "index" or (fname and f.stem != fname) or (not fname and f.stem in OPT_IN):
                 continue
             yield ed, f
 

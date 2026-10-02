@@ -1281,11 +1281,6 @@ def enrich_award(cfg_str, label):
     return f"{text} each" if each else text or (label or "")
 
 
-def free_rules(html_):
-    """Pages from the D&D Free Rules that the system marks as not CC-BY and not to be redistributed outside it."""
-    return isinstance(html_, str) and "Free Rules content" in html_
-
-
 def doc_by_uuid(uuid):
     parts = uuid.split(".")
     ids = [p for p in parts if re.fullmatch(r"[A-Za-z0-9]{16}", p)]
@@ -1308,8 +1303,6 @@ def enrich_embed(target, opts, ctx):
         html_ = g(doc, "text", "content") or g(doc, "system", "description", "value") or ""
         if not html_ and "pages" in doc:
             html_ = " ".join(g(DOCS.get(p), "text", "content", default="") for p in doc["pages"])
-        if free_rules(html_):
-            return ""
         return " / " + resolve(html_, Ctx(rules=ctx.rules, depth=ctx.depth + 1)) + " / "
     if "results" in doc:
         return f" (table: {doc['name']}) "
@@ -1334,6 +1327,8 @@ def resolve(text, ctx):
     # GM-only secret sections (Foundry implementation notes, hidden when Foundry renders) and "fvtt advice" boxes
     # (how to use Foundry's character sheet) aren't rules text
     text = re.sub(r'<section[^>]*class="[^"]*\b(?:secret|fvtt)\b[^"]*"[^>]*>.*?</section>', "", text, flags=re.S)
+    # the Free Rules pages each end with the same licensing footer
+    text = re.sub(r"<p>This is Free Rules content that isn't covered[^<]*</p>", "", text)
     text = re.sub(r"(\[\[lookup [^\]}]*)\]\}\{", r"\1]]{", text)
     text = EMBED.sub(lambda m: enrich_embed(m.group(1), m.group(2) or "", ctx), text)
     text = LOOKUP.sub(lambda m: enrich_lookup(parse_config(m.group(1)), m.group(2), ctx), text)
@@ -1857,7 +1852,11 @@ def f_monster(d, ed, extra):
                lab("condition-immunities", ci), lab("gear", gear), lab("senses", senses),
                lab("languages", ", ".join(lang) or ("None" if rules == "2024" else "—")), lab("cr", crt if cr is not None else ""),
                lab("habitat", habitat), lab("treasure", treasure), text)
-    return line
+    lore = text_of(g(details, "biography", "value"), Ctx(None, A, rules))
+    lore = re.sub(r"(?:^| / )Token artwork by [^/]*", "", lore)
+    lore = re.sub(r"^(?:\s*/\s+)+|(?:\s+/\s*)+$", "", lore.strip())
+    has_text = re.sub(r"/\[[^\]]*\]/|\((?:stat block|table): [^)]*\)|[\s/;,.]", "", lore)
+    return line, (rec(d["name"], "lore", lore) if len(has_text) > 40 else None)
 
 
 def f_vehicle(d, ed, extra):
@@ -1918,8 +1917,6 @@ def journal_lines(docs, ed):
                 yield "spell-lists", p["name"], "spell list", rec(
                     p["name"], "spell list", lab(g(p, "system", "type") or "list",
                                                  g(p, "system", "identifier")), desc, lists)
-                continue
-            if free_rules(g(p, "text", "content")):
                 continue
             txt = text_of(g(p, "text", "content"), Ctx(rules=ed))
             if not re.sub(r"/\[[^\]]*\]/|\((?:stat block|table): [^)]*\)|[\s/;,]", "", txt):
@@ -2070,8 +2067,11 @@ def main():
         for k, d in docs.items():
             if k.startswith("!actors!"):
                 if d.get("type") == "npc":
-                    files[ed, "monsters"].append(f_monster(d, ed, extra))
+                    line, lore = f_monster(d, ed, extra)
+                    files[ed, "monsters"].append(line)
                     index[ed].append(rec(d["name"], "monster", "monsters"))
+                    if lore:
+                        files[ed, "monster-lore"].append(lore)
                     stats[f"{ed} monster"] += 1
                 elif d.get("type") == "vehicle":
                     files[ed, "vehicles"].append(f_vehicle(d, ed, extra))
