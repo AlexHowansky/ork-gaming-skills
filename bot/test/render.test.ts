@@ -1,12 +1,13 @@
 // Tests for the data store and rendering.
-// Needs extracted data (./extract_pf2e.py); the HERO and Cypher tests also need ./extract_hero.py and
-// ./extract_cypher.py and are skipped without them.
+// Needs extracted data (./extract_pf2e.py); the HERO, Cypher and D&D tests also need ./extract_hero.py,
+// ./extract_cypher.py and ./extract_dnd5e.py and are skipped without them.
 import { beforeAll, describe, expect, test } from "bun:test";
 import * as render from "../src/render";
 import { encode, nameOf, SEP, Store, type Rec } from "../src/store";
 
 const hero = await Store.loadHero();
 const cypher = await Store.loadCypher();
+const dnd = await Store.loadDnd();
 
 let store: Store;
 beforeAll(async () => {
@@ -220,6 +221,74 @@ describe.skipIf(!cypher.records.length)("cypher", () => {
 
   test("largest records", () => {
     for (const rec of [...cypher.records].sort((a, b) => a[2].length - b[2].length).slice(-20))
+      for (const p of render.render(rec).pages) {
+        expect(p.length).toBeLessThanOrEqual(4096);
+        expect(p.split("```").length % 2).toBe(1);
+      }
+  });
+});
+
+describe.skipIf(!dnd.records.length)("dnd", () => {
+  const first = (query: string, game = "dnd2024", stem?: string) =>
+    dnd.find(query).find((r) => r[0] === game && (!stem || r[1] === stem))!;
+
+  test("2024 before 2014; page name alone matches 'Journal > Page'", () => {
+    expect(dnd.find("Grappled").map((r) => `${r[0]}:${nameOf(r)}`)).toEqual([
+      "dnd2024:Rules Glossary > Grappled",
+      "dnd2014:Appendix A: Conditions > Grappled",
+    ]);
+    expect(dnd.find("Fireball").map((r) => r[0])).toEqual(["dnd2024", "dnd2014"]);
+  });
+
+  test("encoded pick finds the record again", () => {
+    for (const rec of dnd.records.slice(0, 500)) expect(dnd.find(encode(rec))).toContain(rec);
+  });
+
+  test("monster stat block", () => {
+    const r = render.render(first("Adult Red Dragon"));
+    const page = r.pages[0]!;
+    expect(page).toStartWith("*Huge Dragon, Chaotic Evil*\n**AC** 19 · **Initiative** +12 (22) · **HP** 256 (19d12 + 133)\n");
+    expect(page).toContain("\n**Str** 27 (+8) · **Dex** 10 (+0) · ");
+    expect(page).toContain("\n__**Actions**__\n**Multiattack.** ");
+    expect(page).toContain("\n**Fire Breath (Recharge 5–6).** Dexterity Saving Throw: DC 21");
+    expect(page).toContain("\n**Failure:** 59 (17d6) Fire damage.");
+    expect(page).not.toContain(" / ");
+    expect(render.footer(r)).toBe("D&D 5e (2024)");
+  });
+
+  test("class features by level and table columns", () => {
+    const page = render.render(first("Fighter", "dnd2024", "classes")).pages[0]!;
+    expect(page).toContain("**Features**\n**1** Fighting Style, Second Wind, Weapon Mastery\n**2** Action Surge");
+    expect(page).toContain("• Second Wind: 1: 2, 4: 3, 10: 4");
+    expect(page).toContain("\n**Primary Ability** Strength or Dexterity\n**Hit Point Die** D10 per Fighter level");
+  });
+
+  test("tables: grid when the cells line up, else one row per line", () => {
+    const barb = render.render(first("Barbarian", "dnd2014", "classes")).pages.join("\n");
+    expect(barb).toMatch(/```\nLevel +Proficiency Bonus +Features +Rages +Rage Damage\n1st +\+2 +Rage, Unarmored Defense +2 +\+2\n/);
+    const actions = render.render(first("Actions > Overview"));
+    expect(actions.pages[0]).toContain("\n**Attack** Attack with a weapon or an Unarmed Strike.\n**Dash** ");
+    expect(render.footer(actions)).toBe("D&D 5e (2024) · Chapter 1");
+  });
+
+  test("spell, spell list and roll table", () => {
+    expect(render.render(first("Fireball")).pages[0]).toStartWith(
+      "*Spell*\n**Level** 3 · **School** Evocation · **Casting Time** Action · **Range** 150 feet\n",
+    );
+    const list = render.render(first("Wizard Spell List")).pages[0]!;
+    expect(list).toContain("\n**Cantrips** Acid Splash, ");
+    expect(list).toContain("\n**Level 9** Astral Projection, ");
+    expect(render.render(first("Reincarnate", "dnd2014", "tables")).pages[0]).toContain("\n**1-4** Dragonborn\n");
+  });
+
+  test("lore for monsters only", () => {
+    expect(dnd.loreFor(first("Adult Red Dragon"))).toBeDefined();
+    expect(dnd.loreFor(first("Fireball"))).toBeUndefined();
+    expect(dnd.find("Adult Red Dragon").every((r) => r[1] === "monsters")).toBe(true); // lore isn't searched
+  });
+
+  test("largest records", () => {
+    for (const rec of [...dnd.records].sort((a, b) => a[2].length - b[2].length).slice(-20))
       for (const p of render.render(rec).pages) {
         expect(p.length).toBeLessThanOrEqual(4096);
         expect(p.split("```").length % 2).toBe(1);

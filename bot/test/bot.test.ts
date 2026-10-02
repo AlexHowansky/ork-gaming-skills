@@ -46,7 +46,7 @@ const button = (payload: any, action: string) =>
   payload.components.flatMap((row: any) => row.components).find((c: any) => c.custom_id?.startsWith(`sf:${action}:`));
 
 test("command definitions", () => {
-  for (const name of ["pf", "sf", "hero", "cypher"] as const) {
+  for (const name of ["pf", "sf", "hero", "cypher", "dnd"] as const) {
     const def = command(name).toJSON();
     expect(def.name).toBe(name);
     expect(def.options?.[0]).toMatchObject({ name: "query", required: true, autocomplete: true });
@@ -231,4 +231,30 @@ test.skipIf(!cypher.records.length)("/cypher: lookup, dropdown labels and custom
 
 test("/cypher data missing leaves an empty store", async () => {
   expect((await Store.loadCypher("/nonexistent")).records).toEqual([]);
+});
+
+const dnd = await Store.loadDnd(); // D&D data is optional
+
+test.skipIf(!dnd.records.length)("/dnd: both editions in the dropdown, lore button, custom ids", async () => {
+  const { i, sent } = slash("Adult Red Dragon");
+  await lookup(i, dnd);
+  const msg = sent[0]!.payload;
+  expect(msg.embeds[0].title).toBe("Adult Red Dragon");
+  expect(msg.embeds[0].footer.text).toBe("D&D 5e (2024)");
+  const menu = msg.components[0].components[0];
+  expect(menu.custom_id).toStartWith("dnd:pick:");
+  expect(menu.options.map((o: any) => o.description)).toEqual(["D&D 2024 monster (monsters)", "D&D 2014 monster (monsters)"]);
+  const lore = msg.components[1].components.find((c: any) => c.custom_id?.startsWith("dnd:lore:"));
+  expect(lore).toBeDefined();
+  const l = click(lore.custom_id);
+  await component(l.i, dnd);
+  expect(l.sent[0]!.payload.embeds[0].description).toContain("Red dragons");
+  expect(l.sent[0]!.payload.embeds[0].description).not.toContain("**AC**");
+  const c = click("dnd:next:deadbeef");
+  await component(c.i, dnd);
+  expect(c.sent[0]!.payload.content).toBe("This result expired — run /dnd again.");
+});
+
+test("/dnd data missing leaves an empty store", async () => {
+  expect((await Store.loadDnd("/nonexistent")).records).toEqual([]);
 });

@@ -7,6 +7,8 @@
  *   Name|kind|system|id:XMLID|label:value|...|definition
  * Cypher System record format (see skill/cypher/SKILL.md):
  *   Name|kind|label:value|...|text
+ * D&D 5e record format (see skill/dnd5e/SKILL.md):
+ *   Name|kind|label:value|...|text
  */
 import type { Rec } from "./store";
 
@@ -18,12 +20,15 @@ function dict<T>(o: Record<string, T>): Record<string, T> {
 export const PAGE = 4000; // embed description limit is 4096
 export const COLORS: Record<string, number> = dict({
   pf2e: 0x5d0000, sf2e: 0x1f6fb2, "6e": 0xc9a227, "5e": 0x7a5c12, cypher: 0x2a9d8f,
+  dnd2024: 0xe40712, dnd2014: 0x8b1a10,
 });
 export const GAME_NAMES: Record<string, string> = dict({
   pf2e: "Pathfinder 2e", sf2e: "Starfinder 2e", "6e": "HERO System 6e", "5e": "HERO System 5e",
-  cypher: "Cypher System",
+  cypher: "Cypher System", dnd2024: "D&D 5e (2024)", dnd2014: "D&D 5e (2014)",
 });
-export const GAME_TAGS: Record<string, string> = dict({ pf2e: "PF2e", sf2e: "SF2e", "6e": "6e", "5e": "5e", cypher: "Cypher" });
+export const GAME_TAGS: Record<string, string> = dict({
+  pf2e: "PF2e", sf2e: "SF2e", "6e": "6e", "5e": "5e", cypher: "Cypher", dnd2024: "D&D 2024", dnd2014: "D&D 2014",
+});
 const HERO_GAMES = new Set(["6e", "5e"]);
 
 const ACTIONS: Record<string, string> = dict({ "1a": "◆", "2a": "◆◆", "3a": "◆◆◆", r: "⟲", f: "◇", "0": "◇" });
@@ -180,18 +185,31 @@ function strike(value: string): string {
   return `**${capitalize(kind)}** ${rest}`;
 }
 
-function isTable(par: string): boolean {
+/**
+ * A row's cells. `strict` is for data whose cell text has commas too: those are followed by a space
+ * (or are thousands separators), cell boundaries aren't.
+ */
+function cells(row: string, strict = false): string[] {
+  return strict ? row.split(/,(?! |\d{3}(?!\d))/) : row.split(",");
+}
+
+/** `strict`: every row has the same number of cells (see cells()). */
+function isTable(par: string, strict = false): boolean {
   const rows = par.split("; ");
   if (rows.length < 3) return false;
+  if (strict) {
+    const n = cells(rows[0]!, true).length;
+    return n > 1 && rows.every((r) => cells(r, true).length === n && r.length < 100);
+  }
   return rows.slice(0, 3).every((r) => r.includes(",") && r.length < 60 && !r.includes(". "));
 }
 
-function table(par: string): string {
-  const rows = par.split("; ").map((r) => r.split(","));
-  const cells = rows.filter((r) => r.length > 1);
-  const width = Math.max(...cells.map((r) => r.length));
+function table(par: string, strict = false): string {
+  const rows = par.split("; ").map((r) => cells(r, strict));
+  const multi = rows.filter((r) => r.length > 1);
+  const width = Math.max(...multi.map((r) => r.length));
   const widths = Array.from({ length: width }, (_, i) =>
-    Math.max(0, ...cells.filter((r) => i < r.length).map((r) => r[i]!.length)),
+    Math.max(0, ...multi.filter((r) => i < r.length).map((r) => r[i]!.length)),
   );
   const out = rows.map((r) =>
     r.length === 1 ? r[0]! : r.map((c, i) => c.padEnd(widths[i]!)).join("  ").trimEnd(),
@@ -200,24 +218,46 @@ function table(par: string): string {
   return "```\n" + body + "\n```";
 }
 
+/**
+ * A table whose cells can hold commas (and '; '): at least 3 'first cell,rest' rows, starting with one
+ * and making up most of the paragraph.
+ */
+function isRows(par: string): boolean {
+  const r = par.split("; ");
+  const n = r.filter((row) => row.includes(",")).length;
+  return r[0]!.includes(",") && n >= 3 && n * 3 >= r.length * 2;
+}
+
+/** Such a table as one line per row, first cell in bold. */
+function rows(par: string): string {
+  return par
+    .split("; ")
+    .map((row) => {
+      const [first, sep, rest] = partition(row, ",");
+      return sep ? `**${esc(first)}** ${esc(rest)}` : esc(row);
+    })
+    .join("\n");
+}
+
 /** One paragraph; `keywords` bolds PF2e lead-ins like 'Effect' and 'Special'. */
-function paragraph(par: string, keywords = true): string {
+function paragraph(par: string, keywords = true, strictTables = false): string {
   par = par.trim();
   if (!par) return "";
   const m = /^\[([^\]]+)\]$/.exec(par);
   if (m) return `__**${esc(m[1]!)}**__`;
-  if (isTable(par)) return table(par);
+  if (isTable(par, strictTables)) return table(par, strictTables);
+  if (strictTables && isRows(par)) return rows(par);
   let text = glyphs(esc(par));
   const k = keywords ? KEYWORD_RE.exec(text) : null;
   if (k) text = `**${k[0].replace(/:+$/, "")}**` + text.slice(k[0].length);
   return text;
 }
 
-function paragraphs(text: string, keywords = true): string {
+function paragraphs(text: string, keywords = true, strictTables = false): string {
   text = text.replace(/\s*\/\[([^\]]+)\]\/\s*/g, " / [$1] / ");
   return text
     .split(" / ")
-    .map((p) => paragraph(p, keywords))
+    .map((p) => paragraph(p, keywords, strictTables))
     .filter((p) => p)
     .join("\n");
 }
@@ -310,6 +350,7 @@ function fixCodeBlocks(pages: string[]): string[] {
 export function render(rec: Rec): Rendered {
   if (HERO_GAMES.has(rec[0])) return renderHero(rec);
   if (rec[0] === "cypher") return renderCypher(rec);
+  if (DND_GAMES.has(rec[0])) return renderDnd(rec);
   const [r, rest] = parse(rec);
   const header = r.kind ? `*${esc(r.kind.charAt(0).toUpperCase() + r.kind.slice(1))}*` : "";
   // traits first; stable otherwise
@@ -484,6 +525,128 @@ function renderCypher(rec: Rec): Rendered {
   }
   const header = r.kind ? `*${esc(r.kind.charAt(0).toUpperCase() + r.kind.slice(1))}*` : "";
   r.pages = paginate([...(header ? [header] : []), ...(short.length ? [short.join(" · ")] : []), ...body]);
+  return r;
+}
+
+// D&D 5e
+
+const DND_GAMES = new Set(["dnd2024", "dnd2014"]);
+const DND_LABELS: Record<string, string> = dict({
+  level: "Level", school: "School", time: "Casting Time", range: "Range", components: "Components",
+  duration: "Duration", classes: "Classes", subclasses: "Subclasses", hd: "Hit Die", primary: "Primary Ability",
+  spellcasting: "Spellcasting", features: "Features", scale: "Class Table", type: "Type", granted: "Granted",
+  requires: "Requires", prerequisite: "Prerequisite", repeatable: "Repeatable", uses: "Uses",
+  activation: "Activation", size: "Size", speed: "Speed", senses: "Senses", traits: "Traits", grants: "Grants",
+  damage: "Damage", versatile: "Versatile", properties: "Properties", mastery: "Mastery", ac: "AC",
+  strength: "Strength", bonus: "Bonus", rarity: "Rarity", attunement: "Attunement", price: "Price",
+  weight: "Weight", initiative: "Initiative", hp: "HP", abilities: "Abilities", saves: "Saving Throws",
+  skills: "Skills", vulnerabilities: "Vulnerabilities", resistances: "Resistances", immunities: "Immunities",
+  "condition-immunities": "Condition Immunities", gear: "Gear", languages: "Languages", cr: "CR",
+  habitat: "Habitat", treasure: "Treasure", roll: "Roll", class: "Class", subclass: "Subclass",
+  dt: "Damage Threshold", capacity: "Capacity",
+});
+const DND_LABEL_RE = /^([a-z][a-z-]{0,23}):(.*)$/s;
+const DND_LINE = 100; // short fields share a line up to about this long
+// 'Failure:', 'Trigger:', '1/Day Each:' lead-ins
+const DND_COLON_RE = /^([A-Z0-9][A-Za-z0-9’'\/ -]{0,30}):(?=\s)/;
+// small words allowed lowercase in a 'Fire Breath (Recharge 5–6).' style lead-in
+const SMALL_WORDS = new Set(["a", "an", "and", "as", "at", "by", "for", "from", "in", "of", "on", "or", "the", "to",
+  "with", "per", "vs"]);
+
+/** Bold a paragraph's 'Name (uses).' or 'Failure:' lead-in, as the stat blocks and rules print them. */
+function dndLeadIn(line: string): string {
+  if (/^(__|\*\*|```)/.test(line)) return line;
+  if (DND_COLON_RE.test(line)) return line.replace(DND_COLON_RE, "**$1:**");
+  const m = /^([A-Z0-9][^.]{0,60}?)\.(?= \S)/.exec(line);
+  if (!m) return line;
+  const ok = m[1]!.split(" ").every((w) => {
+    const word = w.replace(/^[("'‘“]+/, "");
+    return !/^[a-z]/.test(word) || SMALL_WORDS.has(word);
+  });
+  return ok ? `**${m[1]}.**${line.slice(m[0].length)}` : line;
+}
+
+function dndParagraphs(text: string): string {
+  return paragraphs(text, false, true).split("\n").map(dndLeadIn).join("\n");
+}
+
+/** 'Cantrips: Acid Splash, ...; Level 1: Alarm, ...' -> one line per spell level. */
+function spellList(value: string): string {
+  return value
+    .split("; ")
+    .map((e) => {
+      const m = /^(Cantrips|Level \d+): (.*)$/s.exec(e);
+      return m ? `**${m[1]}** ${esc(m[2]!)}` : esc(e);
+    })
+    .join("\n");
+}
+
+/** Long labeled fields: the class features by level, class table columns, ability scores. */
+function dndField(label: string, value: string): string {
+  const name = DND_LABELS[label]!;
+  if (label === "features")
+    return `**${name}**\n` + value.split("; ").map((e) => {
+      const m = /^(\d+): (.*)$/s.exec(e);
+      return m ? `**${m[1]}** ${esc(m[2]!)}` : esc(e);
+    }).join("\n");
+  if (label === "scale")
+    return `**${name}**\n` + value.split(" / ").map((col) => {
+      const [title, , steps] = partition(col, ": ");
+      return `• ${esc(title)}: ` + esc(steps.replace(/(^|, )(\d+) /g, "$1$2: "));
+    }).join("\n");
+  if (label === "abilities")
+    return value.split(", ").map((a) => {
+      const [abbr, , rest] = partition(a, " ");
+      return `**${esc(abbr)}** ${esc(rest)}`;
+    }).join(" · ");
+  return `**${name}** ${esc(value)}`;
+}
+
+function renderDnd(rec: Rec): Rendered {
+  const [game, stem, line] = rec;
+  const parts = line.split("|");
+  const r: Rendered = {
+    game, stem,
+    name: parts[0]!.replaceAll("¦", "|"),
+    kind: parts[1] ?? "",
+    source: "", remaster: false, xmlid: "", pages: [],
+  };
+  let header = r.kind ? `*${esc(capitalize(r.kind))}*` : "";
+  const out: string[] = [];
+  const short: string[] = [];
+  const flush = () => {
+    let cur = "";
+    for (const s of short) {
+      if (cur && cur.length + s.length + 3 > DND_LINE) {
+        out.push(cur);
+        cur = s;
+      } else cur = cur ? `${cur} · ${s}` : s;
+    }
+    if (cur) out.push(cur);
+    short.length = 0;
+  };
+  for (const p of parts.slice(2)) {
+    const m = DND_LABEL_RE.exec(p);
+    const label = m?.[1] ?? "";
+    if (m && label === "book") r.source = m[2]!;
+    else if (m && label === "tag") header = `*${esc(m[2]!)}*`; // 'Huge Dragon, Chaotic Evil' for monsters
+    else if (m && label in DND_LABELS) {
+      const value = label === "class" || label === "subclass" ? capitalize(m[2]!.replaceAll("-", " ")) : m[2]!;
+      if (value.length <= 40 && !["features", "scale", "abilities"].includes(label))
+        short.push(`**${DND_LABELS[label]}** ${esc(value)}`);
+      else {
+        flush();
+        out.push(dndField(label, value));
+      }
+    } else {
+      flush();
+      if (r.kind === "table" && /^\d+(-\d+)?:/.test(p)) out.push(rollTable(p));
+      else if (/^(Cantrips|Level \d+): /.test(p)) out.push(spellList(p));
+      else out.push(dndParagraphs(p));
+    }
+  }
+  flush();
+  r.pages = paginate([...(header ? [header] : []), ...out]);
   return r;
 }
 

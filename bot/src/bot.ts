@@ -1,6 +1,6 @@
 /**
  * Discord bot: /pf looks up Pathfinder 2e records, /sf Pathfinder 2e and Starfinder 2e ones,
- * /hero HERO System ones, /cypher Cypher System ones.
+ * /hero HERO System ones, /cypher Cypher System ones, /dnd D&D 5e (2024 and 2014) ones.
  *
  *   bun src/bot.ts                  run the bot (needs DISCORD_TOKEN)
  *   bun src/bot.ts --sync           also register slash commands with Discord (global, or GUILD_ID)
@@ -8,10 +8,11 @@
  *   bun src/bot.ts --preview QUERY --sf     the same, for /sf (default: /pf)
  *   bun src/bot.ts --preview QUERY --hero   the same, for /hero
  *   bun src/bot.ts --preview QUERY --cypher the same, for /cypher
+ *   bun src/bot.ts --preview QUERY --dnd    the same, for /dnd
  *   bun src/bot.ts --verbose        log every interaction and gateway event to the console
  *
- * /hero and /cypher are only offered when their data has been extracted (./extract_hero.py,
- * ./extract_cypher.py).
+ * /hero, /cypher and /dnd are only offered when their data has been extracted (./extract_hero.py,
+ * ./extract_cypher.py, ./extract_dnd5e.py).
  */
 import {
   ActionRowBuilder,
@@ -202,6 +203,7 @@ const DESCRIPTIONS: Record<Store["command"], string> = {
   sf: "Look up a Pathfinder 2e or Starfinder 2e rule, spell, feat, creature, item…",
   hero: "Look up a HERO System power, advantage, limitation, skill, talent, maneuver…",
   cypher: "Look up a Cypher System rule, ability, focus, cypher, artifact, creature, item…",
+  dnd: "Look up a D&D 5e (2024 or 2014) rule, spell, class feature, feat, monster, item…",
 };
 
 /** Slash command definition for a store's command. */
@@ -281,14 +283,14 @@ export function build(stores: Store[], verbose = false): Client {
 async function main() {
   const args = Bun.argv.slice(2);
   const sf = await Store.load();
-  const stores = [sf.only("pf", ["pf2e"]), sf, await Store.loadHero(), await Store.loadCypher()];
+  const stores = [sf.only("pf", ["pf2e"]), sf, await Store.loadHero(), await Store.loadCypher(), await Store.loadDnd()];
   const live = stores.filter((s) => s.records.length);
   for (const s of stores.slice(2))
     if (!s.records.length) console.log(`no ${s.command} data in ${s.data}; /${s.command} is disabled`);
 
   const p = args.indexOf("--preview");
   if (p >= 0) {
-    const flag = ["--sf", "--hero", "--cypher"].find((f) => args.includes(f));
+    const flag = ["--sf", "--hero", "--cypher", "--dnd"].find((f) => args.includes(f));
     const store = stores.find((s) => `--${s.command}` === flag) ?? stores[0]!;
     const query = args[p + 1] ?? "";
     const hits = store.find(query);

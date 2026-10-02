@@ -1378,7 +1378,7 @@ def resolve(text, ctx):
 
 # ---------------------------------------------------------------- text
 
-TAG_BLOCK = re.compile(r"</?(p|div|li|ul|ol|h[1-6]|tr|table|thead|tbody|section|blockquote|aside|figure|dl|dt|dd)"
+TAG_BLOCK = re.compile(r"</?(p|div|li|ul|ol|h[1-6]|table|section|blockquote|aside|figure|dl|dt|dd)"
                        r"\b[^>]*>", re.I)
 
 
@@ -1405,7 +1405,8 @@ def clean(s) -> str:
     s = re.sub(r"\s+/(?:\s+/)*\s+", " / ", f" {s} ")
     s = re.sub(r" / (/\[)", r" \1", s)
     s = re.sub(r"(\]/) / ", r"\1 ", s)
-    s = re.sub(r"\s*;\s*(/\s+)?", "; ", s)
+    s = re.sub(r";\s+/\s+", " / ", s)  # a table's last row, then the next paragraph
+    s = re.sub(r"\s*;\s*", "; ", s)
     s = re.sub(r"\s+/\s*([,;])", r"\1", s)
     s = re.sub(r"([,;])\s*/\s+", r"\1 ", s)
     s = re.sub(r"\s+", " ", s)
@@ -1844,6 +1845,7 @@ def f_monster(d, ed, extra):
         body.extend(entries)
     text = " / ".join(body).replace("|", "¦")
     text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"(\]/) / ", r"\1 ", re.sub(r" / (/\[)", r" \1", text))  # '/[Heading]/' like clean()
     line = rec(d["name"], "monster", lab("tag", tag),
                lab("ac", f"{ac} ({ac_label.lower()})" if ac_label and rules == "2014" else ac),
                lab("initiative", f"{signed(A['init'])} ({10 + A['init']})" if rules == "2024" else ""),

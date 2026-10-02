@@ -4,8 +4,9 @@
  * A port of skill/pf2e/scripts/pf.py and skill/hero/scripts/hero.py (load/rank/grep). Records
  * are [game, file stem, line] tuples. Store.load() holds PF2e and SF2e for /sf, and its
  * only("pf", ["pf2e"]) the PF2e part for /pf; Store.loadHero() holds HERO System 6e and 5e for
- * /hero; Store.loadCypher() holds the Cypher System SRD for /cypher (game "cypher"). Lookups cover
- * every game in the store; each record's game travels with it.
+ * /hero; Store.loadCypher() holds the Cypher System SRD for /cypher (game "cypher");
+ * Store.loadDnd() holds the D&D 5e 2024 and 2014 SRDs for /dnd (games "dnd2024", "dnd2014"). Lookups
+ * cover every game in the store; each record's game travels with it.
  */
 import { readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -15,7 +16,9 @@ export type Hit = { rec: Rec; start: number; end: number };
 
 export const GAMES = ["pf2e", "sf2e"] as const;
 export const HERO_GAMES = ["6e", "5e"] as const; // 6e first, like hero.py
-const OPT_IN = new Set(["creature-lore"]); // only loaded when asked for by name
+export const DND_GAMES = ["dnd2024", "dnd2014"] as const; // 2024 first, like dnd5e.py
+const OPT_IN = new Set(["creature-lore", "monster-lore"]); // only loaded when asked for by name
+const LORE_STEMS = new Set(["creatures", "monsters"]); // files whose records can have lore
 // Full-text search order: rules text and player-facing options before stat blocks,
 // so e.g. a legacy name finds the Remaster Changes page before creatures that mention it.
 const SEARCH_FIRST = ["rules", "conditions", "actions", "traits", "spells", "feats", "class-features", "equipment"];
@@ -24,6 +27,7 @@ export const SEP = "§"; // joins game, file stem and name in autocomplete value
 export const DEFAULT_DATA = resolve(import.meta.dir, "../../skill/pf2e/data");
 export const DEFAULT_HERO_DATA = resolve(import.meta.dir, "../../skill/hero/data");
 export const DEFAULT_CYPHER_DATA = resolve(import.meta.dir, "../../skill/cypher/data");
+export const DEFAULT_DND_DATA = resolve(import.meta.dir, "../../skill/dnd5e/data");
 export const CYPHER = "cypher";
 
 export function nameOf(rec: Rec): string {
@@ -103,9 +107,10 @@ export function rankHero(recs: readonly Rec[], name: string): Rec[] {
 
 /**
  * Like rank(), but the last part of a 'Journal > Page' name also counts as an exact match,
- * so 'Warrior' finds 'Type > Warrior' (like cypher.py).
+ * so 'Warrior' finds 'Type > Warrior' (like cypher.py) and 'Grappled' 'Rules Glossary > Grappled'
+ * (like dnd5e.py).
  */
-export function rankCypher(recs: readonly Rec[], name: string): Rec[] {
+export function rankPage(recs: readonly Rec[], name: string): Rec[] {
   const q = name.toLowerCase();
   const tiers: Rec[][] = [[], [], []];
   for (const r of recs) {
@@ -150,7 +155,7 @@ export class Store {
 
   private constructor(
     readonly data: string,
-    readonly command: "pf" | "sf" | "hero" | "cypher", // slash command it answers; also its component custom id prefix
+    readonly command: "pf" | "sf" | "hero" | "cypher" | "dnd", // slash command it answers; also its component custom id prefix
   ) {}
 
   /** PF2e and SF2e records for /sf. */
@@ -196,6 +201,22 @@ export class Store {
     s.index();
     const ver = Bun.file(join(s.data, "VERSION"));
     if (await ver.exists()) s.version.set(CYPHER, (await ver.text()).trim().split(/\s+/)[0] ?? "");
+    return s;
+  }
+
+  /** D&D 5e records (2024 SRD 5.2 first, then 2014 SRD 5.1) for /dnd. Empty if the data hasn't been extracted. */
+  static async loadDnd(data?: string): Promise<Store> {
+    const s = new Store(data || process.env.DND_DATA || DEFAULT_DND_DATA, "dnd");
+    const dir = (g: string) => join(s.data, g.slice(3)); // dnd2024 -> data/2024
+    for (const g of DND_GAMES) s.records.push(...(await s.read(g, undefined, dir(g))));
+    for (const g of DND_GAMES)
+      s.lore.set(g, new Map((await s.read(g, "monster-lore", dir(g))).map((r) => [nameOf(r), r])));
+    s.index();
+    const ver = Bun.file(join(s.data, "VERSION"));
+    if (await ver.exists()) {
+      const tag = (await ver.text()).trim().split(/\s+/)[0] ?? "";
+      for (const g of DND_GAMES) s.version.set(g, tag);
+    }
     return s;
   }
 
@@ -246,7 +267,7 @@ export class Store {
       if (hits.length) return hits;
       query = name!;
     }
-    const ranker = this.command === "hero" ? rankHero : this.command === "cypher" ? rankCypher : rank;
+    const ranker = this.command === "hero" ? rankHero : this.command === "cypher" || this.command === "dnd" ? rankPage : rank;
     return ranker(this.records, query.trim());
   }
 
@@ -271,8 +292,9 @@ export class Store {
     return [...prefix, ...sub].slice(0, limit);
   }
 
+  /** The creature-lore / monster-lore record for a creature or monster, if there is one. */
   loreFor(rec: Rec): Rec | undefined {
-    if (rec[1] !== "creatures") return undefined;
+    if (!LORE_STEMS.has(rec[1])) return undefined;
     return this.lore.get(rec[0])?.get(nameOf(rec));
   }
 }

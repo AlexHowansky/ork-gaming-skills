@@ -133,18 +133,18 @@ $D -s 'opportunity attack' -f rules  # full-text regex search
 
 ## Discord bot
 
-A Bun/TypeScript Discord bot in `bot/` (discord.js) answers `/pf <query>`, `/sf <query>`, `/hero <query>` and `/cypher <query>`. It reads the same data files as the skills and doesn't need Python.
+A Bun/TypeScript Discord bot in `bot/` (discord.js) answers `/pf <query>`, `/sf <query>`, `/hero <query>`, `/cypher <query>` and `/dnd <query>`. It reads the same data files as the skills and doesn't need Python.
 
-`/pf` searches Pathfinder 2e. `/sf` searches Pathfinder 2e and Starfinder 2e together, and each result says which game it's from. `/hero` searches HERO System 6e and 5e together, 6e first, and also matches HERO Designer ids (e.g. `ENERGYBLAST`). Its results name the edition, the template (`Main6E`, `Vehicle6E`, ...) and the id. `/hero` is only registered if the HERO data has been extracted. Since that data is Hero Games' copyrighted material, only offer `/hero` on servers where that's appropriate. `/cypher` searches the Cypher System SRD. A type, flavor, descriptor or focus can be found by its bare name (e.g. `Warrior` finds `Type > Warrior`), and the dropdown tells apart same-named items from different genres. `/cypher` is only registered if the Cypher data has been extracted. Names autocomplete as you type. Results are private to the person who asked, with a **Share to channel** button to post them. When a query matches several records (including the same name in both games), a dropdown lets you switch between them. Long records page with ◀ ▶, and creatures with background text get a **Lore** button. If no name matches, the bot falls back to a full-text search and lists the hits. In `/hero`, the dropdown also lists the same ability's versions in other templates.
+`/pf` searches Pathfinder 2e. `/sf` searches Pathfinder 2e and Starfinder 2e together, and each result says which game it's from. `/hero` searches HERO System 6e and 5e together, 6e first, and also matches HERO Designer ids (e.g. `ENERGYBLAST`). Its results name the edition, the template (`Main6E`, `Vehicle6E`, ...) and the id. `/hero` is only registered if the HERO data has been extracted. Since that data is Hero Games' copyrighted material, only offer `/hero` on servers where that's appropriate. `/cypher` searches the Cypher System SRD. A type, flavor, descriptor or focus can be found by its bare name (e.g. `Warrior` finds `Type > Warrior`), and the dropdown tells apart same-named items from different genres. `/cypher` is only registered if the Cypher data has been extracted. `/dnd` searches the D&D 5e 2024 and 2014 rules together, 2024 first. Each result says which edition it's from, and a rules glossary entry can be found by its bare name (e.g. `Grappled` finds `Rules Glossary > Grappled`). Monsters with background text get a **Lore** button. `/dnd` is only registered if the D&D data has been extracted. Names autocomplete as you type. Results are private to the person who asked, with a **Share to channel** button to post them. When a query matches several records (including the same name in both games), a dropdown lets you switch between them. Long records page with ◀ ▶, and creatures with background text get a **Lore** button. If no name matches, the bot falls back to a full-text search and lists the hits. In `/hero`, the dropdown also lists the same ability's versions in other templates.
 
 Setup:
 
 1. Extract the data.
 2. In the [Discord developer portal](https://discord.com/developers/applications), create an application, add a bot, and copy its token (from the **Bot** page, not the Public Key). No privileged intents are needed.
 3. Invite it with `https://discord.com/oauth2/authorize?client_id=<APPLICATION_ID>&scope=bot+applications.commands&permissions=19456` (View Channels, Send Messages, Embed Links).
-4. Register the slash commands with `--sync` (below) once, and again whenever the command definitions change or you add or remove the HERO or Cypher data. Global commands can take a while to appear. Set `GUILD_ID` in the env file to sync to a single server instantly while testing.
+4. Register the slash commands with `--sync` (below) once, and again whenever the command definitions change or you add or remove the HERO, Cypher or D&D data. Global commands can take a while to appear. Set `GUILD_ID` in the env file to sync to a single server instantly while testing.
 
-The bot loads all data into memory at startup, so restart the service after `./extract_pf2e.py`, `./extract_hero.py` or `./extract_cypher.py` updates the data.
+The bot loads all data into memory at startup, so restart the service after `./extract_pf2e.py`, `./extract_hero.py`, `./extract_cypher.py` or `./extract_dnd5e.py` updates the data.
 
 ### Bun
 
@@ -155,13 +155,14 @@ cd bot
 bun install
 cp .env.example .env && chmod 600 .env   # set DISCORD_TOKEN; Bun loads .env automatically
 
-bun run sync     # register /pf, /sf, /hero and /cypher, then keep running (later runs: bun run start)
+bun run sync     # register /pf, /sf, /hero, /cypher and /dnd, then keep running (later runs: bun run start)
 bun run start --verbose   # also log each interaction and gateway event to the console
 
 bun src/bot.ts --preview "Red Dragon (Adult)"   # no Discord needed
 bun src/bot.ts --preview "Laser Pistol" --sf   # same, for /sf
 bun src/bot.ts --preview "Flight" --hero        # same, for /hero
 bun src/bot.ts --preview "Warrior" --cypher     # same, for /cypher
+bun src/bot.ts --preview "Adult Red Dragon" --dnd   # same, for /dnd
 bun test
 bun run typecheck
 ```
@@ -203,8 +204,8 @@ skill/dnd5e/
     VERSION                   # release tag
     2024/*.txt  2014/*.txt    # one file per category, plus index.txt
 bot/
-  src/bot.ts                  # Discord bot (discord.js): /pf, /sf, /hero and /cypher commands, components
-  src/store.ts                # in-memory data, lookup/search/autocomplete (port of pf.py + hero.py + cypher.py)
+  src/bot.ts                  # Discord bot (discord.js): /pf, /sf, /hero, /cypher and /dnd commands, components
+  src/store.ts                # in-memory data, lookup/search/autocomplete (port of pf.py + hero.py + cypher.py + dnd5e.py)
   src/render.ts               # record -> Discord markdown pages
   test/                       # bun test
   gaming-skills.service       # sample systemd unit
