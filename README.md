@@ -17,6 +17,7 @@ Provides tools to extract and convert role playing game system rules to a small 
 - [HERO System 5th ed](#hero-system)
 - [HERO System 6th ed](#hero-system)
 - [Cypher System](#cypher-system)
+- [Dungeons & Dragons 5e (2014 and 2024)](#dungeons--dragons-5e)
 
 ### Pathfinder/Starfinder
 
@@ -71,13 +72,29 @@ The data comes from the `release.zip` file attached to each upstream release (ab
 
 It downloads `release.zip` into memory (nothing is written to disk) and writes `skill/cypher/data/` next to the script. Pass `--out DIR` to write somewhere else. `data/VERSION` records the release tag and asset URL. The content is Cypher System material owned by Monte Cook Games, used under the Cypher System Open License.
 
+### Dungeons & Dragons 5e
+
+Extracts the D&D 5e System Reference Documents from the [Foundry VTT dnd5e system](https://github.com/foundryvtt/dnd5e) and turns them into the same compact format. Both rule sets are included: the 2024 rules (SRD 5.2) and the 2014 rules (SRD 5.1). It also installs a Claude Code skill (`dnd5e`) so Claude looks up rules there instead of answering from memory.
+
+The data comes from the `dnd5e-release-X.Y.Z.zip` file attached to each upstream release. The zip is about 110 MB, but almost all of that is token art. `extract_dnd5e.py` reads the zip's directory and fetches only the compendium packs (about 11 MB) with HTTP range requests. The packs are LevelDB databases, read with the same small reader as the Cypher extractor. The extracted data is about 4 MB of plain text, split into `2024/` and `2014/`: spells and spell lists, classes, subclasses and class features, species, backgrounds, feats, equipment and magic items, monsters, monster features, vehicles, the rules and glossary, and roll tables, one record per line.
+
+The system writes much of its text with Foundry roll enrichers (`[[/attack]]`, `[[/damage average]]`, `[[lookup @save.dc.value]]`, ...) that are only filled in when Foundry renders a page. The extractor fills them in the same way, deriving each monster's ability modifiers, proficiency bonus, AC, attack bonuses, damage averages and save DCs from its stat block. Foundry implementation notes are dropped. So are the pages the system marks as "Free Rules" content, which isn't covered by the SRD's license.
+
+```sh
+./extract_dnd5e.py                   # extract from the latest release
+./extract_dnd5e.py --tag 6.0.5       # pin a specific release (release-6.0.5)
+./extract_dnd5e.py --check || ./extract_dnd5e.py   # update only when a newer release exists
+```
+
+Nothing is written to disk except the output in `skill/dnd5e/data/` next to the script. Pass `--out DIR` to write somewhere else. `data/VERSION` records the release tag and asset URL. The SRD 5.1 and SRD 5.2 are © Wizards of the Coast LLC, licensed under [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/legalcode).
+
 ## Install the skills
 
 ```sh
 ./install_skills.sh
 ```
 
-This symlinks `skill/pf2e`, `skill/hero` and `skill/cypher` into `~/.claude/skills/`. Pass skill names (`./install_skills.sh pf2e`) to link only some. Extract the data first. Start a new Claude Code session afterwards so the skills load.
+This symlinks `skill/pf2e`, `skill/hero`, `skill/cypher` and `skill/dnd5e` into `~/.claude/skills/`. Pass skill names (`./install_skills.sh pf2e`) to link only some. Extract the data first. Start a new Claude Code session afterwards so the skills load.
 
 ## Querying the data by hand
 
@@ -103,6 +120,14 @@ $C "Bears a Halo of Fire"            # a focus, with its tier abilities
 $C "Onslaught" "Warrior"             # several at once; Warrior finds the type page too
 $C "Blaster" --genre sci-fi          # limit to one genre's items
 $C -s 'GM intrusion' -f rules        # full-text regex search
+```
+
+```sh
+D=skill/dnd5e/scripts/dnd5e.py
+$D "Fireball"                        # both editions, 2024 first
+$D "Adult Red Dragon" -e 2014        # limit to one edition
+$D "Grappled"                        # finds "Rules Glossary > Grappled"
+$D -s 'opportunity attack' -f rules  # full-text regex search
 ```
 
 
@@ -151,6 +176,7 @@ Service: edit the paths and user in `bot/gaming-skills.service`, copy it to `/et
 extract_pf2e.py               # release json-assets.zip -> compact text
 extract_hero.py               # HERO Designer rules JSON -> compact text
 extract_cypher.py             # cyphersystem-compendium release.zip (LevelDB packs) -> compact text
+extract_dnd5e.py              # dnd5e system release zip (LevelDB packs, range-fetched) -> compact text
 install_skills.sh             # link skills into ~/.claude/skills
 skill/pf2e/
   SKILL.md                    # when Claude uses the skill; record format legend
@@ -170,6 +196,12 @@ skill/cypher/
   data/                       # generated, not committed (see .gitignore)
     VERSION                   # release tag
     *.txt                     # one file per category, plus index.txt
+skill/dnd5e/
+  SKILL.md                    # when Claude uses the skill; record format legend
+  scripts/dnd5e.py            # lookup / search tool
+  data/                       # generated, not committed (see .gitignore)
+    VERSION                   # release tag
+    2024/*.txt  2014/*.txt    # one file per category, plus index.txt
 bot/
   src/bot.ts                  # Discord bot (discord.js): /pf, /sf, /hero and /cypher commands, components
   src/store.ts                # in-memory data, lookup/search/autocomplete (port of pf.py + hero.py + cypher.py)

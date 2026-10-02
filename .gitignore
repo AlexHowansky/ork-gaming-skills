@@ -2,6 +2,7 @@ __pycache__/
 bot/.env
 bot/node_modules/
 skill/cypher/data/
+skill/dnd5e/data/
 skill/hero/data/
 skill/pf2e/data/
 *.pyc
