@@ -117,7 +117,7 @@ Setup:
 1. Extract the data.
 2. In the [Discord developer portal](https://discord.com/developers/applications), create an application, add a bot, and copy its token (from the **Bot** page, not the Public Key). No privileged intents are needed.
 3. Invite it with `https://discord.com/oauth2/authorize?client_id=<APPLICATION_ID>&scope=bot+applications.commands&permissions=19456` (View Channels, Send Messages, Embed Links).
-4. Register the slash commands with `--sync` (below) once, and again whenever the command definitions change or you add or remove the HERO or Cypher data. Global commands can take a while to appear. Set `PF_GUILD_ID` in the env file to sync to a single server instantly while testing.
+4. Register the slash commands with `--sync` (below) once, and again whenever the command definitions change or you add or remove the HERO or Cypher data. Global commands can take a while to appear. Set `GUILD_ID` in the env file to sync to a single server instantly while testing.
 
 The bot loads all data into memory at startup, so restart the service after `./extract_pf2e.py`, `./extract_hero.py` or `./extract_cypher.py` updates the data.
 

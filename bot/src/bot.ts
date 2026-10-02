@@ -3,7 +3,7 @@
  * /hero HERO System ones, /cypher Cypher System ones.
  *
  *   bun src/bot.ts                  run the bot (needs DISCORD_TOKEN)
- *   bun src/bot.ts --sync           also register slash commands with Discord (global, or PF_GUILD_ID)
+ *   bun src/bot.ts --sync           also register slash commands with Discord (global, or GUILD_ID)
  *   bun src/bot.ts --preview QUERY  print what the bot would show, without connecting
  *   bun src/bot.ts --preview QUERY --sf     the same, for /sf (default: /pf)
  *   bun src/bot.ts --preview QUERY --hero   the same, for /hero
@@ -315,7 +315,7 @@ async function main() {
     const version = Object.fromEntries(stores.flatMap((s) => [...s.version]));
     console.log(`logged in as ${c.user.tag}; data ${JSON.stringify(version)}`);
     if (args.includes("--sync")) {
-      const gid = process.env.PF_GUILD_ID;
+      const gid = process.env.GUILD_ID;
       const defs = live.map((s) => command(s.command).toJSON());
       const synced = gid ? await c.application.commands.set(defs, gid) : await c.application.commands.set(defs);
       console.log(`synced ${synced.size} commands${gid ? ` to guild ${gid}` : " globally"}`);
