@@ -134,6 +134,8 @@ bun test
 bun run typecheck
 ```
 
+To have `/hero` answer with only some editions, set `HERO_EDITIONS` in `.env` to a comma-separated list from `6e`, `5e` (default: both). Lookups, autocomplete, full-text search and the dropdown all skip the other editions.
+
 Service: edit the paths and user in `bots/bun/pfbot-bun.service`, copy it to `/etc/systemd/system/`, then `sudo systemctl enable --now pfbot-bun`.
 
 ## Layout

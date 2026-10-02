@@ -3,7 +3,7 @@
 import { beforeAll, expect, test } from "bun:test";
 import { MessageFlags } from "discord.js";
 import { command, complete, component, lookup } from "../src/bot";
-import { nameOf, Store } from "../src/store";
+import { heroEditions, nameOf, Store } from "../src/store";
 
 let store: Store;
 let hero: Store;
@@ -173,4 +173,21 @@ test.skipIf(!hasHero)("/hero: id lookup and expiry message", async () => {
 
 test("/hero data missing leaves an empty store", async () => {
   expect((await Store.loadHero("/nonexistent")).records).toEqual([]);
+});
+
+test("HERO_EDITIONS parsing", () => {
+  expect(heroEditions(undefined)).toEqual(["6e", "5e"]);
+  expect(heroEditions(" ")).toEqual(["6e", "5e"]);
+  expect(heroEditions("5e")).toEqual(["5e"]);
+  expect(heroEditions("5E, 6e")).toEqual(["6e", "5e"]);
+  expect(() => heroEditions("4e")).toThrow("unknown edition 4e");
+});
+
+test.skipIf(!hasHero)("/hero only answers with the selected editions", async () => {
+  const only5e = await Store.loadHero(undefined, ["5e"]);
+  expect(only5e.records.length).toBeGreaterThan(0);
+  expect(new Set(only5e.records.map((r) => r[0]))).toEqual(new Set(["5e"]));
+  expect(only5e.find("ENERGYBLAST").map((r) => r[0])).toEqual(["5e"]);
+  expect(only5e.suggest("flight").every((r) => r[0] === "5e")).toBe(true);
+  expect(only5e.search("flight").every((h) => h.rec[0] === "5e")).toBe(true);
 });

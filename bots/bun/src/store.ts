@@ -104,6 +104,15 @@ export function grep(recs: readonly Rec[], pattern: string, limit: number): Hit[
   return out;
 }
 
+/** Parses a HERO_EDITIONS value like "5e,6e"; unset or blank means every edition. */
+export function heroEditions(value?: string): string[] {
+  const picked = (value ?? "").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
+  if (!picked.length) return [...HERO_GAMES];
+  const bad = picked.filter((e) => !(HERO_GAMES as readonly string[]).includes(e));
+  if (bad.length) throw new Error(`HERO_EDITIONS: unknown edition ${bad.join(", ")} (expected ${HERO_GAMES.join(", ")})`);
+  return HERO_GAMES.filter((g) => picked.includes(g));
+}
+
 export class Store {
   records: Rec[] = [];
   lore = new Map<string, Map<string, Rec>>();
@@ -139,10 +148,13 @@ export class Store {
     return s;
   }
 
-  /** HERO System 6e and 5e records for /hero. Empty if the data hasn't been extracted. */
-  static async loadHero(data?: string): Promise<Store> {
+  /**
+   * HERO System records for /hero: the editions in HERO_EDITIONS (comma-separated, e.g. "6e"),
+   * else 6e and 5e. Empty if the data hasn't been extracted.
+   */
+  static async loadHero(data?: string, editions = heroEditions(process.env.HERO_EDITIONS)): Promise<Store> {
     const s = new Store(data || process.env.HERO_DATA || DEFAULT_HERO_DATA, "hero");
-    for (const g of HERO_GAMES) s.records.push(...(await s.read(g)));
+    for (const g of HERO_GAMES) if (editions.includes(g)) s.records.push(...(await s.read(g)));
     s.index();
     const ver = Bun.file(join(s.data, "VERSION"));
     if (await ver.exists()) s.version.set("hero", (await ver.text()).split(",", 1)[0]!.trim());
