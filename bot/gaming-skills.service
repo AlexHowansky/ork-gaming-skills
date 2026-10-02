@@ -1,6 +1,6 @@
 # Sample systemd unit. Replace /path/to/ork-gaming-skills and YOUR_USER, then:
-#   sudo cp bots/bun/pfbot-bun.service /etc/systemd/system/
-#   sudo systemctl daemon-reload && sudo systemctl enable --now pfbot-bun
+#   sudo cp bot/gaming-skills.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now gaming-skills
 [Unit]
 Description=PF2e/SF2e Discord lookup bot (Bun)
 After=network-online.target
@@ -9,8 +9,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=YOUR_USER
-WorkingDirectory=/path/to/ork-gaming-skills/bots/bun
-EnvironmentFile=/path/to/ork-gaming-skills/bots/bun/.env
+WorkingDirectory=/path/to/ork-gaming-skills/bot
+EnvironmentFile=/path/to/ork-gaming-skills/bot/.env
 ExecStart=/home/YOUR_USER/.bun/bin/bun src/bot.ts
 Restart=on-failure
 RestartSec=10

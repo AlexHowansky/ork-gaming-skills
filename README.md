@@ -83,45 +83,27 @@ $H -s 'hit location' -f modifiers    # full-text regex search
 ```
 
 
-## Discord bots
+## Discord bot
 
-There are two interchangeable Discord bots that answer `/pf <query>` and `/hero <query>`: a Python one in `bots/python/` (discord.py) and a Bun/TypeScript one in `bots/bun/` (discord.js). They look the same to users and give identical results. The Python bot reuses `pf.py` and `hero.py` directly. The Bun bot is a port of it that reads the same data files and doesn't need Python. Run one or the other. Both register the same commands and can use the same Discord application, but don't run both with the same token at once.
+A Bun/TypeScript Discord bot in `bot/` (discord.js) answers `/pf <query>`, `/sf <query>` and `/hero <query>`. It reads the same data files as the skills and doesn't need Python.
 
-`/pf` searches Pathfinder 2e and Starfinder 2e together, and each result says which game it's from. `/hero` searches HERO System 6e and 5e together, 6e first, and also matches HERO Designer ids (e.g. `ENERGYBLAST`). Its results name the edition, the template (`Main6E`, `Vehicle6E`, ...) and the id. `/hero` is only registered if the HERO data has been extracted. Since that data is Hero Games' copyrighted material, only offer `/hero` on servers where that's appropriate. Names autocomplete as you type. Results are private to the person who asked, with a **Share to channel** button to post them. When a query matches several records (including the same name in both games), a dropdown lets you switch between them. Long records page with ◀ ▶, and creatures with background text get a **Lore** button. If no name matches, the bot falls back to a full-text search and lists the hits. In `/hero`, the dropdown also lists the same ability's versions in other templates.
+`/pf` searches Pathfinder 2e. `/sf` searches Pathfinder 2e and Starfinder 2e together, and each result says which game it's from. `/hero` searches HERO System 6e and 5e together, 6e first, and also matches HERO Designer ids (e.g. `ENERGYBLAST`). Its results name the edition, the template (`Main6E`, `Vehicle6E`, ...) and the id. `/hero` is only registered if the HERO data has been extracted. Since that data is Hero Games' copyrighted material, only offer `/hero` on servers where that's appropriate. Names autocomplete as you type. Results are private to the person who asked, with a **Share to channel** button to post them. When a query matches several records (including the same name in both games), a dropdown lets you switch between them. Long records page with ◀ ▶, and creatures with background text get a **Lore** button. If no name matches, the bot falls back to a full-text search and lists the hits. In `/hero`, the dropdown also lists the same ability's versions in other templates.
 
-Common setup:
+Setup:
 
 1. Extract the data.
 2. In the [Discord developer portal](https://discord.com/developers/applications), create an application, add a bot, and copy its token (from the **Bot** page, not the Public Key). No privileged intents are needed.
 3. Invite it with `https://discord.com/oauth2/authorize?client_id=<APPLICATION_ID>&scope=bot+applications.commands&permissions=19456` (View Channels, Send Messages, Embed Links).
-4. Register the slash commands with `--sync` (below) once, and again whenever the command definitions change or you add or remove the HERO data. Global commands can take a while to appear. Set `PF_GUILD_ID` in the env file to sync to a single server instantly while testing. If you switch from the Bun bot to the Python bot, this sync removes `/sf`, which only the Bun bot has.
+4. Register the slash commands with `--sync` (below) once, and again whenever the command definitions change or you add or remove the HERO data. Global commands can take a while to appear. Set `PF_GUILD_ID` in the env file to sync to a single server instantly while testing.
 
-Both bots load all data into memory at startup, so restart the service after `./extract_pf2e.py` or `./extract_hero.py` updates the data.
-
-### Python
-
-```sh
-python3 -m venv bots/python/.venv
-bots/python/.venv/bin/pip install -r bots/python/requirements.txt
-cp bots/python/pfbot.env.example bots/python/pfbot.env && chmod 600 bots/python/pfbot.env   # set DISCORD_TOKEN
-
-set -a; . bots/python/pfbot.env; set +a
-bots/python/.venv/bin/python bots/python/pfbot.py --sync      # register /pf and /hero, then keep running
-bots/python/.venv/bin/python bots/python/pfbot.py --verbose   # also log each interaction to the console
-
-bots/python/.venv/bin/python bots/python/pfbot.py --preview "Red Dragon (Adult)"   # no Discord needed
-bots/python/.venv/bin/python bots/python/pfbot.py --preview "Flight" --hero         # same, for /hero
-bots/python/.venv/bin/python -m unittest discover bots/python
-```
-
-Service: edit the paths and user in `bots/python/pfbot.service`, copy it to `/etc/systemd/system/`, then `sudo systemctl enable --now pfbot`.
+The bot loads all data into memory at startup, so restart the service after `./extract_pf2e.py` or `./extract_hero.py` updates the data.
 
 ### Bun
 
 Requires [Bun](https://bun.sh) 1.x.
 
 ```sh
-cd bots/bun
+cd bot
 bun install
 cp .env.example .env && chmod 600 .env   # set DISCORD_TOKEN; Bun loads .env automatically
 
@@ -129,16 +111,15 @@ bun run sync     # register /pf, /sf and /hero, then keep running (later runs: b
 bun run start --verbose   # also log each interaction and gateway event to the console
 
 bun src/bot.ts --preview "Red Dragon (Adult)"   # no Discord needed
+bun src/bot.ts --preview "Laser Pistol" --sf   # same, for /sf
 bun src/bot.ts --preview "Flight" --hero        # same, for /hero
 bun test
 bun run typecheck
 ```
 
-The Bun bot also has `/sf`, which searches Pathfinder 2e and Starfinder 2e together. Its `/pf` searches only Pathfinder 2e. `bun src/bot.ts --preview QUERY --sf` previews `/sf`.
-
 To have `/hero` answer with only some editions, set `HERO_EDITIONS` in `.env` to a comma-separated list from `6e`, `5e` (default: both). Lookups, autocomplete, full-text search and the dropdown all skip the other editions.
 
-Service: edit the paths and user in `bots/bun/pfbot-bun.service`, copy it to `/etc/systemd/system/`, then `sudo systemctl enable --now pfbot-bun`.
+Service: edit the paths and user in `bot/gaming-skills.service`, copy it to `/etc/systemd/system/`, then `sudo systemctl enable --now gaming-skills`.
 
 ## Layout
 
@@ -158,15 +139,10 @@ skill/hero/
   data/                       # generated, not committed (Hero Games' copyright)
     VERSION                   # HERO Designer build the data came from
     5e/*.txt  6e/*.txt        # one file per category, plus index.txt
-bots/python/
-  pfbot.py                    # Discord bot: /pf and /hero commands, views
-  store.py                    # in-memory data, lookup/search/autocomplete via pf.py and hero.py
-  render.py                   # record -> Discord markdown pages
-  pfbot.service               # sample systemd unit
-bots/bun/
+bot/
   src/bot.ts                  # Discord bot (discord.js): /pf, /sf and /hero commands, components
-  src/store.ts                # port of pf.py + hero.py + store.py
-  src/render.ts               # port of render.py (same output)
+  src/store.ts                # in-memory data, lookup/search/autocomplete (port of pf.py + hero.py)
+  src/render.ts               # record -> Discord markdown pages
   test/                       # bun test
-  pfbot-bun.service           # sample systemd unit
+  gaming-skills.service       # sample systemd unit
 ```

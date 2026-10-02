@@ -1,11 +1,10 @@
 /**
  * In-memory copy of the extracted data, shared by all bot commands.
  *
- * A port of skill/pf2e/scripts/pf.py and skill/hero/scripts/hero.py (load/rank/grep) and
- * bots/python/store.py. Records are [game, file stem, line] tuples. Store.load() holds PF2e
- * and SF2e for /sf, and its only("pf", ["pf2e"]) the PF2e part for /pf; Store.loadHero() holds
- * HERO System 6e and 5e for /hero. Lookups cover every game in the store; each record's game
- * travels with it.
+ * A port of skill/pf2e/scripts/pf.py and skill/hero/scripts/hero.py (load/rank/grep). Records
+ * are [game, file stem, line] tuples. Store.load() holds PF2e and SF2e for /sf, and its
+ * only("pf", ["pf2e"]) the PF2e part for /pf; Store.loadHero() holds HERO System 6e and 5e for
+ * /hero. Lookups cover every game in the store; each record's game travels with it.
  */
 import { readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -21,8 +20,8 @@ const OPT_IN = new Set(["creature-lore"]); // only loaded when asked for by name
 const SEARCH_FIRST = ["rules", "conditions", "actions", "traits", "spells", "feats", "class-features", "equipment"];
 export const SEP = "§"; // joins game, file stem and name in autocomplete values
 
-export const DEFAULT_DATA = resolve(import.meta.dir, "../../../skill/pf2e/data");
-export const DEFAULT_HERO_DATA = resolve(import.meta.dir, "../../../skill/hero/data");
+export const DEFAULT_DATA = resolve(import.meta.dir, "../../skill/pf2e/data");
+export const DEFAULT_HERO_DATA = resolve(import.meta.dir, "../../skill/hero/data");
 
 export function nameOf(rec: Rec): string {
   const i = rec[2].indexOf("|");

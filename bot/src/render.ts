@@ -1,6 +1,5 @@
 /**
- * Turn a compact record line into Discord markdown pages. A port of bots/python/render.py;
- * the two must produce the same text.
+ * Turn a compact record line into Discord markdown pages.
  *
  * PF2e/SF2e record format (see skill/pf2e/SKILL.md):
  *   Name|kind level|SRC [R]|label:value|...|description

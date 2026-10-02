@@ -1,4 +1,4 @@
-// Tests for the data store and rendering; same cases as bots/python/test_render.py.
+// Tests for the data store and rendering.
 // Needs extracted data (./extract_pf2e.py); the HERO tests also need ./extract_hero.py and are skipped without it.
 import { beforeAll, describe, expect, test } from "bun:test";
 import * as render from "../src/render";

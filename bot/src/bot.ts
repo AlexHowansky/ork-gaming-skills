@@ -1,7 +1,6 @@
 /**
  * Discord bot: /pf looks up Pathfinder 2e records, /sf Pathfinder 2e and Starfinder 2e ones,
  * /hero HERO System ones.
- * A port of bots/python/pfbot.py.
  *
  *   bun src/bot.ts                  run the bot (needs DISCORD_TOKEN)
  *   bun src/bot.ts --sync           also register slash commands with Discord (global, or PF_GUILD_ID)
