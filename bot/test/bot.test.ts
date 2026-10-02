@@ -46,7 +46,7 @@ const button = (payload: any, action: string) =>
   payload.components.flatMap((row: any) => row.components).find((c: any) => c.custom_id?.startsWith(`sf:${action}:`));
 
 test("command definitions", () => {
-  for (const name of ["pf", "sf", "hero"] as const) {
+  for (const name of ["pf", "sf", "hero", "cypher"] as const) {
     const def = command(name).toJSON();
     expect(def.name).toBe(name);
     expect(def.options?.[0]).toMatchObject({ name: "query", required: true, autocomplete: true });
@@ -209,4 +209,26 @@ test.skipIf(!hasHero)("/hero only answers with the selected editions", async () 
   expect(only5e.find("ENERGYBLAST").map((r) => r[0])).toEqual(["5e"]);
   expect(only5e.suggest("flight").every((r) => r[0] === "5e")).toBe(true);
   expect(only5e.search("flight").every((h) => h.rec[0] === "5e")).toBe(true);
+});
+
+const cypher = await Store.loadCypher(); // Cypher data is optional
+
+test.skipIf(!cypher.records.length)("/cypher: lookup, dropdown labels and custom ids", async () => {
+  const { i, sent } = slash("Troll");
+  await lookup(i, cypher);
+  const msg = sent[0]!.payload;
+  expect(msg.embeds[0].title).toBe("Troll");
+  const menu = msg.components[0].components[0];
+  expect(menu.custom_id).toStartWith("cypher:pick:");
+  expect(menu.options.map((o: any) => o.description).sort()).toEqual([
+    "Cypher creature basic-creatures-and-npcs (creatures)",
+    "Cypher creature creatures (creatures)",
+  ]);
+  const c = click("cypher:next:deadbeef");
+  await component(c.i, cypher);
+  expect(c.sent[0]!.payload.content).toBe("This result expired — run /cypher again.");
+});
+
+test("/cypher data missing leaves an empty store", async () => {
+  expect((await Store.loadCypher("/nonexistent")).records).toEqual([]);
 });

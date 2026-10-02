@@ -1,15 +1,17 @@
 /**
  * Discord bot: /pf looks up Pathfinder 2e records, /sf Pathfinder 2e and Starfinder 2e ones,
- * /hero HERO System ones.
+ * /hero HERO System ones, /cypher Cypher System ones.
  *
  *   bun src/bot.ts                  run the bot (needs DISCORD_TOKEN)
  *   bun src/bot.ts --sync           also register slash commands with Discord (global, or PF_GUILD_ID)
  *   bun src/bot.ts --preview QUERY  print what the bot would show, without connecting
  *   bun src/bot.ts --preview QUERY --sf     the same, for /sf (default: /pf)
  *   bun src/bot.ts --preview QUERY --hero   the same, for /hero
+ *   bun src/bot.ts --preview QUERY --cypher the same, for /cypher
  *   bun src/bot.ts --verbose        log every interaction and gateway event to the console
  *
- * /hero is only offered when the HERO data has been extracted (./extract_hero.py).
+ * /hero and /cypher are only offered when their data has been extracted (./extract_hero.py,
+ * ./extract_cypher.py).
  */
 import {
   ActionRowBuilder,
@@ -58,8 +60,9 @@ function trunc(s: string, n = 100): string {
 }
 
 /**
- * 'PF2e spell 3 (spells)' or '6e power Vehicle6E (powers)': tells apart same-named records
- * across games, files and HERO Designer templates (the usual Main/Main6E one is left out).
+ * 'PF2e spell 3 (spells)', '6e power Vehicle6E (powers)' or 'Cypher cypher fantasy (cyphers)': tells
+ * apart same-named records across games, files, HERO Designer templates (the usual Main/Main6E one
+ * is left out) and Cypher genres.
  */
 function label(rec: Rec): string {
   let system = systemOf(rec);
@@ -198,6 +201,7 @@ const DESCRIPTIONS: Record<Store["command"], string> = {
   pf: "Look up a Pathfinder 2e rule, spell, feat, creature, item…",
   sf: "Look up a Pathfinder 2e or Starfinder 2e rule, spell, feat, creature, item…",
   hero: "Look up a HERO System power, advantage, limitation, skill, talent, maneuver…",
+  cypher: "Look up a Cypher System rule, ability, focus, cypher, artifact, creature, item…",
 };
 
 /** Slash command definition for a store's command. */
@@ -277,13 +281,15 @@ export function build(stores: Store[], verbose = false): Client {
 async function main() {
   const args = Bun.argv.slice(2);
   const sf = await Store.load();
-  const stores = [sf.only("pf", ["pf2e"]), sf, await Store.loadHero()];
+  const stores = [sf.only("pf", ["pf2e"]), sf, await Store.loadHero(), await Store.loadCypher()];
   const live = stores.filter((s) => s.records.length);
-  if (!stores[2]!.records.length) console.log(`no HERO data in ${stores[2]!.data}; /hero is disabled`);
+  for (const s of stores.slice(2))
+    if (!s.records.length) console.log(`no ${s.command} data in ${s.data}; /${s.command} is disabled`);
 
   const p = args.indexOf("--preview");
   if (p >= 0) {
-    const store = stores[args.includes("--hero") ? 2 : args.includes("--sf") ? 1 : 0]!;
+    const flag = ["--sf", "--hero", "--cypher"].find((f) => args.includes(f));
+    const store = stores.find((s) => `--${s.command}` === flag) ?? stores[0]!;
     const query = args[p + 1] ?? "";
     const hits = store.find(query);
     if (!hits.length) {

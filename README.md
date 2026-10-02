@@ -16,6 +16,7 @@ Provides tools to extract and convert role playing game system rules to a small 
 - [Starfinder 2e](#pathfinderstarfinder)
 - [HERO System 5th ed](#hero-system)
 - [HERO System 6th ed](#hero-system)
+- [Cypher System](#cypher-system)
 
 ### Pathfinder/Starfinder
 
@@ -56,13 +57,27 @@ npx ork-hero-extract-rules /path/to/HD6.jar   # from ork-hero-export-renderer; w
 
 Without `--rules`, `extract_hero.py` uses `$ORK_HERO_RULES`, then `../ork-hero-export-renderer/rules`, then `./rules`. Re-run both steps after installing a new HERO Designer build.
 
+### Cypher System
+
+Extracts the Cypher System Reference Document from the [Cypher SRD Compendium](https://github.com/mrkwnzl/cyphersystem-compendium) Foundry VTT module and turns it into the same compact format. It also installs a Claude Code skill (`cypher`) so Claude looks up rules there instead of answering from memory.
+
+The data comes from the `release.zip` file attached to each upstream release (about 44 MB, mostly token images). The module stores its compendiums as LevelDB databases. `extract_cypher.py` reads them with its own small reader, so it still needs only the standard library. The extracted data is about 3 MB of plain text: abilities, skills and inabilities, cyphers, artifacts, equipment, weapons, armor, creatures and NPCs, vehicles and starships, power shifts, roll tables, and the full SRD text (including the genre rulebooks), one record per line. The SRD's types, flavors, descriptors and foci can be looked up by name.
+
+```sh
+./extract_cypher.py                  # extract from the latest release
+./extract_cypher.py --tag 3.12.1     # pin a specific release
+./extract_cypher.py --check || ./extract_cypher.py   # update only when a newer release exists
+```
+
+It downloads `release.zip` into memory (nothing is written to disk) and writes `skill/cypher/data/` next to the script. Pass `--out DIR` to write somewhere else. `data/VERSION` records the release tag and asset URL. The content is Cypher System material owned by Monte Cook Games, used under the Cypher System Open License.
+
 ## Install the skills
 
 ```sh
 ./install_skills.sh
 ```
 
-This symlinks `skill/pf2e` and `skill/hero` into `~/.claude/skills/`. Pass skill names (`./install_skills.sh pf2e`) to link only some. Extract the data first. Start a new Claude Code session afterwards so the skills load.
+This symlinks `skill/pf2e`, `skill/hero` and `skill/cypher` into `~/.claude/skills/`. Pass skill names (`./install_skills.sh pf2e`) to link only some. Extract the data first. Start a new Claude Code session afterwards so the skills load.
 
 ## Querying the data by hand
 
@@ -82,21 +97,29 @@ $H "Flight" -t Vehicle6E             # one template's version
 $H -s 'hit location' -f modifiers    # full-text regex search
 ```
 
+```sh
+C=skill/cypher/scripts/cypher.py
+$C "Bears a Halo of Fire"            # a focus, with its tier abilities
+$C "Onslaught" "Warrior"             # several at once; Warrior finds the type page too
+$C "Blaster" --genre sci-fi          # limit to one genre's items
+$C -s 'GM intrusion' -f rules        # full-text regex search
+```
+
 
 ## Discord bot
 
-A Bun/TypeScript Discord bot in `bot/` (discord.js) answers `/pf <query>`, `/sf <query>` and `/hero <query>`. It reads the same data files as the skills and doesn't need Python.
+A Bun/TypeScript Discord bot in `bot/` (discord.js) answers `/pf <query>`, `/sf <query>`, `/hero <query>` and `/cypher <query>`. It reads the same data files as the skills and doesn't need Python.
 
-`/pf` searches Pathfinder 2e. `/sf` searches Pathfinder 2e and Starfinder 2e together, and each result says which game it's from. `/hero` searches HERO System 6e and 5e together, 6e first, and also matches HERO Designer ids (e.g. `ENERGYBLAST`). Its results name the edition, the template (`Main6E`, `Vehicle6E`, ...) and the id. `/hero` is only registered if the HERO data has been extracted. Since that data is Hero Games' copyrighted material, only offer `/hero` on servers where that's appropriate. Names autocomplete as you type. Results are private to the person who asked, with a **Share to channel** button to post them. When a query matches several records (including the same name in both games), a dropdown lets you switch between them. Long records page with ◀ ▶, and creatures with background text get a **Lore** button. If no name matches, the bot falls back to a full-text search and lists the hits. In `/hero`, the dropdown also lists the same ability's versions in other templates.
+`/pf` searches Pathfinder 2e. `/sf` searches Pathfinder 2e and Starfinder 2e together, and each result says which game it's from. `/hero` searches HERO System 6e and 5e together, 6e first, and also matches HERO Designer ids (e.g. `ENERGYBLAST`). Its results name the edition, the template (`Main6E`, `Vehicle6E`, ...) and the id. `/hero` is only registered if the HERO data has been extracted. Since that data is Hero Games' copyrighted material, only offer `/hero` on servers where that's appropriate. `/cypher` searches the Cypher System SRD. A type, flavor, descriptor or focus can be found by its bare name (e.g. `Warrior` finds `Type > Warrior`), and the dropdown tells apart same-named items from different genres. `/cypher` is only registered if the Cypher data has been extracted. Names autocomplete as you type. Results are private to the person who asked, with a **Share to channel** button to post them. When a query matches several records (including the same name in both games), a dropdown lets you switch between them. Long records page with ◀ ▶, and creatures with background text get a **Lore** button. If no name matches, the bot falls back to a full-text search and lists the hits. In `/hero`, the dropdown also lists the same ability's versions in other templates.
 
 Setup:
 
 1. Extract the data.
 2. In the [Discord developer portal](https://discord.com/developers/applications), create an application, add a bot, and copy its token (from the **Bot** page, not the Public Key). No privileged intents are needed.
 3. Invite it with `https://discord.com/oauth2/authorize?client_id=<APPLICATION_ID>&scope=bot+applications.commands&permissions=19456` (View Channels, Send Messages, Embed Links).
-4. Register the slash commands with `--sync` (below) once, and again whenever the command definitions change or you add or remove the HERO data. Global commands can take a while to appear. Set `PF_GUILD_ID` in the env file to sync to a single server instantly while testing.
+4. Register the slash commands with `--sync` (below) once, and again whenever the command definitions change or you add or remove the HERO or Cypher data. Global commands can take a while to appear. Set `PF_GUILD_ID` in the env file to sync to a single server instantly while testing.
 
-The bot loads all data into memory at startup, so restart the service after `./extract_pf2e.py` or `./extract_hero.py` updates the data.
+The bot loads all data into memory at startup, so restart the service after `./extract_pf2e.py`, `./extract_hero.py` or `./extract_cypher.py` updates the data.
 
 ### Bun
 
@@ -107,12 +130,13 @@ cd bot
 bun install
 cp .env.example .env && chmod 600 .env   # set DISCORD_TOKEN; Bun loads .env automatically
 
-bun run sync     # register /pf, /sf and /hero, then keep running (later runs: bun run start)
+bun run sync     # register /pf, /sf, /hero and /cypher, then keep running (later runs: bun run start)
 bun run start --verbose   # also log each interaction and gateway event to the console
 
 bun src/bot.ts --preview "Red Dragon (Adult)"   # no Discord needed
 bun src/bot.ts --preview "Laser Pistol" --sf   # same, for /sf
 bun src/bot.ts --preview "Flight" --hero        # same, for /hero
+bun src/bot.ts --preview "Warrior" --cypher     # same, for /cypher
 bun test
 bun run typecheck
 ```
@@ -126,6 +150,7 @@ Service: edit the paths and user in `bot/gaming-skills.service`, copy it to `/et
 ```
 extract_pf2e.py               # release json-assets.zip -> compact text
 extract_hero.py               # HERO Designer rules JSON -> compact text
+extract_cypher.py             # cyphersystem-compendium release.zip (LevelDB packs) -> compact text
 install_skills.sh             # link skills into ~/.claude/skills
 skill/pf2e/
   SKILL.md                    # when Claude uses the skill; record format legend
@@ -139,9 +164,15 @@ skill/hero/
   data/                       # generated, not committed (Hero Games' copyright)
     VERSION                   # HERO Designer build the data came from
     5e/*.txt  6e/*.txt        # one file per category, plus index.txt
+skill/cypher/
+  SKILL.md                    # when Claude uses the skill; record format legend
+  scripts/cypher.py           # lookup / search tool
+  data/                       # generated, not committed (see .gitignore)
+    VERSION                   # release tag
+    *.txt                     # one file per category, plus index.txt
 bot/
-  src/bot.ts                  # Discord bot (discord.js): /pf, /sf and /hero commands, components
-  src/store.ts                # in-memory data, lookup/search/autocomplete (port of pf.py + hero.py)
+  src/bot.ts                  # Discord bot (discord.js): /pf, /sf, /hero and /cypher commands, components
+  src/store.ts                # in-memory data, lookup/search/autocomplete (port of pf.py + hero.py + cypher.py)
   src/render.ts               # record -> Discord markdown pages
   test/                       # bun test
   gaming-skills.service       # sample systemd unit

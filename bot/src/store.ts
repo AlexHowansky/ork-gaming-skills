@@ -4,7 +4,8 @@
  * A port of skill/pf2e/scripts/pf.py and skill/hero/scripts/hero.py (load/rank/grep). Records
  * are [game, file stem, line] tuples. Store.load() holds PF2e and SF2e for /sf, and its
  * only("pf", ["pf2e"]) the PF2e part for /pf; Store.loadHero() holds HERO System 6e and 5e for
- * /hero. Lookups cover every game in the store; each record's game travels with it.
+ * /hero; Store.loadCypher() holds the Cypher System SRD for /cypher (game "cypher"). Lookups cover
+ * every game in the store; each record's game travels with it.
  */
 import { readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -22,6 +23,8 @@ export const SEP = "§"; // joins game, file stem and name in autocomplete value
 
 export const DEFAULT_DATA = resolve(import.meta.dir, "../../skill/pf2e/data");
 export const DEFAULT_HERO_DATA = resolve(import.meta.dir, "../../skill/hero/data");
+export const DEFAULT_CYPHER_DATA = resolve(import.meta.dir, "../../skill/cypher/data");
+export const CYPHER = "cypher";
 
 export function nameOf(rec: Rec): string {
   const i = rec[2].indexOf("|");
@@ -37,19 +40,27 @@ function isHero(rec: Rec): boolean {
   return (HERO_GAMES as readonly string[]).includes(rec[0]);
 }
 
-/** HERO Designer template of a HERO record ('Main6E', 'Vehicle6E', ...); '' for PF2e/SF2e. */
+/**
+ * What tells apart same-named records within one file: the HERO Designer template of a HERO
+ * record ('Main6E', 'Vehicle6E', ...), or the genre (else source pack) of a Cypher record
+ * ('fantasy', 'mutations', ...); '' for PF2e/SF2e.
+ */
 export function systemOf(rec: Rec): string {
-  if (!isHero(rec)) return "";
-  return rec[2].split("|", 3)[2] ?? "";
+  if (isHero(rec)) return rec[2].split("|", 3)[2] ?? "";
+  if (rec[0] !== CYPHER) return "";
+  const fields = rec[2].split("|");
+  const genre = fields.find((f) => f.startsWith("genre:"));
+  const pack = fields.find((f) => f.startsWith("pack:"));
+  return (genre ?? pack ?? "").replace(/^\w+:/, "");
 }
 
 /**
  * Autocomplete value that resolves back to exactly this record.
- * HERO records repeat names across templates within a file, so theirs add the template.
+ * HERO and Cypher records repeat names within a file, so theirs add the template or genre.
  */
 export function encode(rec: Rec): string {
   const value = `${rec[0]}${SEP}${rec[1]}${SEP}${nameOf(rec)}`;
-  return isHero(rec) ? `${value}${SEP}${systemOf(rec)}` : value;
+  return isHero(rec) || rec[0] === CYPHER ? `${value}${SEP}${systemOf(rec)}` : value;
 }
 
 function escapeRegExp(s: string): string {
@@ -90,6 +101,22 @@ export function rankHero(recs: readonly Rec[], name: string): Rec[] {
   return tiers.find((t) => t.length) ?? [];
 }
 
+/**
+ * Like rank(), but the last part of a 'Journal > Page' name also counts as an exact match,
+ * so 'Warrior' finds 'Type > Warrior' (like cypher.py).
+ */
+export function rankCypher(recs: readonly Rec[], name: string): Rec[] {
+  const q = name.toLowerCase();
+  const tiers: Rec[][] = [[], [], []];
+  for (const r of recs) {
+    const n = nameOf(r).toLowerCase();
+    if (n === q || n.slice(n.lastIndexOf(" > ") + 3) === q) tiers[0]!.push(r);
+    else if (n.startsWith(q)) tiers[1]!.push(r);
+    else if (n.includes(q)) tiers[2]!.push(r);
+  }
+  return tiers.find((t) => t.length) ?? [];
+}
+
 /** Up to `limit` records whose text matches `pattern` (case-insensitive). */
 export function grep(recs: readonly Rec[], pattern: string, limit: number): Hit[] {
   const pat = new RegExp(pattern, "i");
@@ -123,7 +150,7 @@ export class Store {
 
   private constructor(
     readonly data: string,
-    readonly command: "pf" | "sf" | "hero", // slash command it answers; also its component custom id prefix
+    readonly command: "pf" | "sf" | "hero" | "cypher", // slash command it answers; also its component custom id prefix
   ) {}
 
   /** PF2e and SF2e records for /sf. */
@@ -162,6 +189,16 @@ export class Store {
     return s;
   }
 
+  /** Cypher System SRD records for /cypher. Empty if the data hasn't been extracted. */
+  static async loadCypher(data?: string): Promise<Store> {
+    const s = new Store(data || process.env.CYPHER_DATA || DEFAULT_CYPHER_DATA, "cypher");
+    s.records.push(...(await s.read(CYPHER, undefined, s.data)));
+    s.index();
+    const ver = Bun.file(join(s.data, "VERSION"));
+    if (await ver.exists()) s.version.set(CYPHER, (await ver.text()).trim().split(/\s+/)[0] ?? "");
+    return s;
+  }
+
   /** A store for `command` holding only this one's records from `games`, sharing the record data. */
   only(command: Store["command"], games: readonly string[]): Store {
     const s = new Store(this.data, command);
@@ -180,9 +217,8 @@ export class Store {
     this.names = this.records.map((r) => [nameOf(r).toLowerCase(), r]);
   }
 
-  /** Records from data/<game>/*.txt in file-name order, like pf.files(). */
-  private async read(game: string, fname?: string): Promise<Rec[]> {
-    const dir = join(this.data, game);
+  /** Records from data/<game>/*.txt (or `dir`/*.txt) in file-name order, like pf.files(). */
+  private async read(game: string, fname?: string, dir = join(this.data, game)): Promise<Rec[]> {
     let entries: string[];
     try {
       if (!statSync(dir).isDirectory()) return [];
@@ -210,7 +246,8 @@ export class Store {
       if (hits.length) return hits;
       query = name!;
     }
-    return (this.command === "hero" ? rankHero : rank)(this.records, query.trim());
+    const ranker = this.command === "hero" ? rankHero : this.command === "cypher" ? rankCypher : rank;
+    return ranker(this.records, query.trim());
   }
 
   search(text: string, limit = 25): Hit[] {

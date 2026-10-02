@@ -1,10 +1,12 @@
 // Tests for the data store and rendering.
-// Needs extracted data (./extract_pf2e.py); the HERO tests also need ./extract_hero.py and are skipped without it.
+// Needs extracted data (./extract_pf2e.py); the HERO and Cypher tests also need ./extract_hero.py and
+// ./extract_cypher.py and are skipped without them.
 import { beforeAll, describe, expect, test } from "bun:test";
 import * as render from "../src/render";
 import { encode, nameOf, SEP, Store, type Rec } from "../src/store";
 
 const hero = await Store.loadHero();
+const cypher = await Store.loadCypher();
 
 let store: Store;
 beforeAll(async () => {
@@ -175,5 +177,52 @@ describe.skipIf(!hero.records.length)("hero", () => {
   test("largest records", () => {
     for (const rec of [...hero.records].sort((a, b) => a[2].length - b[2].length).slice(-20))
       for (const p of render.render(rec).pages) expect(p.length).toBeLessThanOrEqual(4096);
+  });
+});
+
+describe.skipIf(!cypher.records.length)("cypher", () => {
+  const first = (query: string, stem?: string) => cypher.find(query).find((r) => !stem || r[1] === stem)!;
+
+  test("page name alone matches 'Journal > Page'", () => {
+    expect(cypher.find("Warrior").map((r) => `${r[1]}:${nameOf(r)}`)).toEqual(["creatures:Warrior", "rules:Type > Warrior"]);
+    expect(cypher.find("Bears a Halo of Fire").map(nameOf)).toEqual(["Focus > Bears a Halo of Fire"]);
+  });
+
+  test("encoded pick disambiguates genres and packs", () => {
+    const seen = new Map<string, number>();
+    for (const rec of cypher.records) seen.set(encode(rec), (seen.get(encode(rec)) ?? 0) + 1);
+    const dupes = cypher.records.filter((r) => seen.get(encode(r))! > 1);
+    for (const rec of cypher.records.filter((r) => !dupes.includes(r)).slice(0, 500)) expect(cypher.find(encode(rec))).toEqual([rec]);
+    const trolls = cypher.records.filter((r) => nameOf(r) === "Troll");
+    expect(new Set(trolls.map(encode)).size).toBe(trolls.length);
+  });
+
+  test("labels share a line, text keeps lead-ins", () => {
+    const r = render.render(first("Ghost", "creatures"));
+    expect(r.pages[0]).toStartWith("*Creature*\n**Level** 4 (target 12) · **Health** 12 · **Damage** 5\n");
+    expect(r.pages[0]).toContain("\n**Motive:** Unpredictable");
+    expect(render.footer(r)).toBe("Cypher System");
+  });
+
+  test("ability, genre and book footers", () => {
+    expect(render.render(first("Temporal Dislocation")).pages[0]).toStartWith("*Ability*\n**Cost** 7 Intellect\nYou disappear");
+    expect(render.footer(render.render(first("Blaster rifle, heavy")))).toBe("Cypher System · sci-fi");
+    const atk = render.render(first("Rules of the Game > Action: Attack"));
+    expect(render.footer(atk, undefined, 0)).toStartWith("Cypher System · Cypher System Rulebook > Part 2: Rules · Page 1/");
+    expect(atk.pages.join("\n")).not.toContain("**Special**");
+  });
+
+  test("roll table", () => {
+    const body = render.render(first("Over the Counter Medicine")).pages[0]!;
+    expect(body).toContain("**Roll** 1d10\nProvides an asset");
+    expect(body).toContain("\n**8-9** Pain and discomfort relief");
+  });
+
+  test("largest records", () => {
+    for (const rec of [...cypher.records].sort((a, b) => a[2].length - b[2].length).slice(-20))
+      for (const p of render.render(rec).pages) {
+        expect(p.length).toBeLessThanOrEqual(4096);
+        expect(p.split("```").length % 2).toBe(1);
+      }
   });
 });

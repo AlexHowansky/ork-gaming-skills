@@ -5,6 +5,8 @@
  *   Name|kind level|SRC [R]|label:value|...|description
  * HERO System record format (see skill/hero/SKILL.md):
  *   Name|kind|system|id:XMLID|label:value|...|definition
+ * Cypher System record format (see skill/cypher/SKILL.md):
+ *   Name|kind|label:value|...|text
  */
 import type { Rec } from "./store";
 
@@ -14,11 +16,14 @@ function dict<T>(o: Record<string, T>): Record<string, T> {
 }
 
 export const PAGE = 4000; // embed description limit is 4096
-export const COLORS: Record<string, number> = dict({ pf2e: 0x5d0000, sf2e: 0x1f6fb2, "6e": 0xc9a227, "5e": 0x7a5c12 });
+export const COLORS: Record<string, number> = dict({
+  pf2e: 0x5d0000, sf2e: 0x1f6fb2, "6e": 0xc9a227, "5e": 0x7a5c12, cypher: 0x2a9d8f,
+});
 export const GAME_NAMES: Record<string, string> = dict({
   pf2e: "Pathfinder 2e", sf2e: "Starfinder 2e", "6e": "HERO System 6e", "5e": "HERO System 5e",
+  cypher: "Cypher System",
 });
-export const GAME_TAGS: Record<string, string> = dict({ pf2e: "PF2e", sf2e: "SF2e", "6e": "6e", "5e": "5e" });
+export const GAME_TAGS: Record<string, string> = dict({ pf2e: "PF2e", sf2e: "SF2e", "6e": "6e", "5e": "5e", cypher: "Cypher" });
 const HERO_GAMES = new Set(["6e", "5e"]);
 
 const ACTIONS: Record<string, string> = dict({ "1a": "◆", "2a": "◆◆", "3a": "◆◆◆", r: "⟲", f: "◇", "0": "◇" });
@@ -195,23 +200,24 @@ function table(par: string): string {
   return "```\n" + body + "\n```";
 }
 
-function paragraph(par: string): string {
+/** One paragraph; `keywords` bolds PF2e lead-ins like 'Effect' and 'Special'. */
+function paragraph(par: string, keywords = true): string {
   par = par.trim();
   if (!par) return "";
   const m = /^\[([^\]]+)\]$/.exec(par);
   if (m) return `__**${esc(m[1]!)}**__`;
   if (isTable(par)) return table(par);
   let text = glyphs(esc(par));
-  const k = KEYWORD_RE.exec(text);
+  const k = keywords ? KEYWORD_RE.exec(text) : null;
   if (k) text = `**${k[0].replace(/:+$/, "")}**` + text.slice(k[0].length);
   return text;
 }
 
-function paragraphs(text: string): string {
+function paragraphs(text: string, keywords = true): string {
   text = text.replace(/\s*\/\[([^\]]+)\]\/\s*/g, " / [$1] / ");
   return text
     .split(" / ")
-    .map(paragraph)
+    .map((p) => paragraph(p, keywords))
     .filter((p) => p)
     .join("\n");
 }
@@ -303,6 +309,7 @@ function fixCodeBlocks(pages: string[]): string[] {
 
 export function render(rec: Rec): Rendered {
   if (HERO_GAMES.has(rec[0])) return renderHero(rec);
+  if (rec[0] === "cypher") return renderCypher(rec);
   const [r, rest] = parse(rec);
   const header = r.kind ? `*${esc(r.kind.charAt(0).toUpperCase() + r.kind.slice(1))}*` : "";
   // traits first; stable otherwise
@@ -422,6 +429,61 @@ function renderHero(rec: Rec): Rendered {
   r.xmlid = rest.find((p) => p.startsWith("id:"))?.slice(3) ?? "";
   const header = r.kind ? `*${esc(r.kind.charAt(0).toUpperCase() + r.kind.slice(1))}*` : "";
   r.pages = paginate([...(header ? [header] : []), ...heroBlocks(rest)]);
+  return r;
+}
+
+// Cypher System
+
+const CYPHER_LABELS: Record<string, string> = dict({
+  cost: "Cost", rating: "Rating", level: "Level", depletion: "Depletion", price: "Price", qty: "Quantity",
+  weapon: "Weapon", damage: "Damage", range: "Range", notes: "Notes", armor: "Armor", health: "Health",
+  crew: "Crew", weapons: "Weapon Systems", roll: "Roll",
+});
+// shown in the footer instead (genre, book) or only used to tell records apart (pack)
+const CYPHER_FOOTER = new Set(["genre", "book"]);
+const CYPHER_LABEL_RE = /^([a-z]{1,12}):(.*)$/s;
+// 'Motive:', 'GM intrusion:', 'Tier 1:' lead-ins of creature and character option paragraphs
+const LEAD_RE = /^([A-Z][A-Za-z0-9’' -]{0,30}):(?=\s)/;
+
+function cypherParagraphs(text: string): string {
+  return paragraphs(text, false)
+    .split("\n")
+    .map((line) => line.replace(LEAD_RE, "**$1:**"))
+    .join("\n");
+}
+
+/** A table's '1-2:Result; 3:Result' entries, one per line. */
+function rollTable(value: string): string {
+  return value
+    .split("; ")
+    .map((e) => {
+      const m = /^(\d+(?:-\d+)?):(.*)$/s.exec(e);
+      return m ? `**${m[1]}** ${esc(m[2]!)}` : esc(e);
+    })
+    .join("\n");
+}
+
+function renderCypher(rec: Rec): Rendered {
+  const [game, stem, line] = rec;
+  const parts = line.split("|");
+  const r: Rendered = {
+    game, stem,
+    name: parts[0]!.replaceAll("¦", "|"),
+    kind: parts[1] ?? "",
+    source: "", remaster: false, xmlid: "", pages: [],
+  };
+  const short: string[] = [];
+  const body: string[] = [];
+  for (const p of parts.slice(2)) {
+    const m = CYPHER_LABEL_RE.exec(p);
+    if (m && m[1] === "pack") continue;
+    if (m && CYPHER_FOOTER.has(m[1]!)) r.source = m[2]!;
+    else if (m && m[1]! in CYPHER_LABELS) short.push(`**${CYPHER_LABELS[m[1]!]}** ${esc(m[2]!)}`);
+    else if (r.kind === "table" && /^\d+(-\d+)?:/.test(p)) body.push(rollTable(p));
+    else body.push(cypherParagraphs(p));
+  }
+  const header = r.kind ? `*${esc(r.kind.charAt(0).toUpperCase() + r.kind.slice(1))}*` : "";
+  r.pages = paginate([...(header ? [header] : []), ...(short.length ? [short.join(" · ")] : []), ...body]);
   return r;
 }
 
