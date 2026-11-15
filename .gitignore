@@ -5,4 +5,5 @@ skills/cypher/data/
 skills/dnd5e/data/
 skills/hero/data/
 skills/pf2e/data/
+skills/one-shot/sessions
 *.pyc

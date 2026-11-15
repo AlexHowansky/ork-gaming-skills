@@ -1,6 +1,6 @@
 # ork-gaming-skills
 
-Provides tools to extract and convert role playing game system rules to a small portable format that can be efficently referenced by AI skills.
+Provides tools to extract and convert role playing game system rules to a small portable format that can be efficently referenced by AI skills. It also includes a [one-shot](#one-shot-game-master) skill that has Claude run a short Roll For Shoes adventure as the Game Master.
 
 *No third-party content is included or redistributed here. This repository contains software only to manipulate data.*
 
@@ -18,6 +18,7 @@ Provides tools to extract and convert role playing game system rules to a small 
 - [HERO System 6th ed](#hero-system)
 - [Cypher System](#cypher-system)
 - [Dungeons & Dragons 5e (2014 and 2024)](#dungeons--dragons-5e)
+- [One-shot Game Master (Roll For Shoes)](#one-shot-game-master)
 
 ### Pathfinder/Starfinder
 
@@ -30,7 +31,7 @@ The data comes from the `json-assets.zip` file attached to each upstream release
 ./extract_pf2e.py --pf2e 8.5.0 --sf2e 1.5.0     # pin specific releases
 ```
 
-`extract_pf2e.py` finds the latest release tags if none were given. It downloads each `json-assets.zip` into memory (nothing is written to disk) and writes `skill/pf2e/data/` next to the script, wherever you run it from. Pass `--out DIR` to write somewhere else.
+`extract_pf2e.py` finds the latest release tags if none were given. It downloads each `json-assets.zip` into memory (nothing is written to disk) and writes `skills/pf2e/data/` next to the script, wherever you run it from. Pass `--out DIR` to write somewhere else.
 
 #### Updating
 
@@ -53,7 +54,7 @@ The rules must first be extracted to JSON via the `ork-hero-extract-rules` tool 
 
 ```sh
 npx ork-hero-extract-rules /path/to/HD6.jar   # from ork-hero-export-renderer; writes ./rules
-./extract_hero.py --rules ./rules             # writes skill/hero/data/
+./extract_hero.py --rules ./rules             # writes skills/hero/data/
 ```
 
 Without `--rules`, `extract_hero.py` uses `$ORK_HERO_RULES`, then `../ork-hero-export-renderer/rules`, then `./rules`. Re-run both steps after installing a new HERO Designer build.
@@ -70,7 +71,7 @@ The data comes from the `release.zip` file attached to each upstream release (ab
 ./extract_cypher.py --check || ./extract_cypher.py   # update only when a newer release exists
 ```
 
-It downloads `release.zip` into memory (nothing is written to disk) and writes `skill/cypher/data/` next to the script. Pass `--out DIR` to write somewhere else. `data/VERSION` records the release tag and asset URL. The content is Cypher System material owned by Monte Cook Games, used under the Cypher System Open License.
+It downloads `release.zip` into memory (nothing is written to disk) and writes `skills/cypher/data/` next to the script. Pass `--out DIR` to write somewhere else. `data/VERSION` records the release tag and asset URL. The content is Cypher System material owned by Monte Cook Games, used under the Cypher System Open License.
 
 ### Dungeons & Dragons 5e
 
@@ -86,7 +87,20 @@ The system writes much of its text with Foundry roll enrichers (`[[/attack]]`, `
 ./extract_dnd5e.py --check || ./extract_dnd5e.py   # update only when a newer release exists
 ```
 
-Nothing is written to disk except the output in `skill/dnd5e/data/` next to the script. Pass `--out DIR` to write somewhere else. `data/VERSION` records the release tag and asset URL. The SRD 5.1 and SRD 5.2 are © Wizards of the Coast LLC, licensed under [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/legalcode).
+Nothing is written to disk except the output in `skills/dnd5e/data/` next to the script. Pass `--out DIR` to write somewhere else. `data/VERSION` records the release tag and asset URL. The SRD 5.1 and SRD 5.2 are © Wizards of the Coast LLC, licensed under [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/legalcode).
+
+### One-shot Game Master
+
+The `one-shot` skill has Claude act as Game Master for a short one-shot adventure using the Roll For Shoes system. It needs no extracted data. Ask Claude to run a one-shot (or mention Roll For Shoes) and it will ask for a genre, a target length, the number of players, and anything to keep out of the game, then each character's name and description. Every character starts with only `Do Anything 1` and earns new skills by rolling all sixes.
+
+The story is hidden and discovered through play: Claude plans a secret truth, NPCs with wants, fears and secrets, and clues, and paces the adventure to the requested length (by the real clock when it has a shell, otherwise by roll count). It rolls its own opposition dice with a tool before the player reports a total, so it can't fudge them. Several players can share one session by writing `Name: I do X` (`OOC:` for out-of-character talk).
+
+Each session keeps two files in a `sessions/` directory under the current working directory, named from the date and a slug of the adventure title:
+
+- `YYYY-MM-DD-<slug>.gm-notes.md`: hidden GM notes (the truth, NPC secrets, planned beats, pacing, current state). Claude writes this file through a subagent so its contents don't appear on screen. Don't open it until the session ends. To avoid permission prompts that would show the notes, allow `Write(sessions/**)` and `Edit(sessions/**)` in `.claude/settings.json` before playing.
+- `YYYY-MM-DD-<slug>.md`: the public session log, with the play-by-play, roll log, skill advancement, NPCs, final character sheets and sequel hooks.
+
+To play a sequel, give Claude a previous session log and it imports the characters and their skills.
 
 ## Install the skills
 
@@ -94,12 +108,12 @@ Nothing is written to disk except the output in `skill/dnd5e/data/` next to the 
 ./install_skills.sh
 ```
 
-This symlinks `skill/pf2e`, `skill/hero`, `skill/cypher` and `skill/dnd5e` into `~/.claude/skills/`. Pass skill names (`./install_skills.sh pf2e`) to link only some. Extract the data first. Start a new Claude Code session afterwards so the skills load.
+This symlinks `skills/pf2e`, `skills/hero`, `skills/cypher`, `skills/dnd5e` and `skills/one-shot` into `~/.claude/skills/`. Pass skill names (`./install_skills.sh pf2e`) to link only some. Extract the data first (`one-shot` needs none). Start a new Claude Code session afterwards so the skills load.
 
 ## Querying the data by hand
 
 ```sh
-S=skill/pf2e/scripts/pf.py
+S=skills/pf2e/scripts/pf.py
 $S "Fireball"                        # full record, one field per line
 $S "Red Dragon (Young)" -g pf2e      # limit to one game
 $S "Goblin Warrior" -f creature-lore # creature background (opt-in file)
@@ -107,7 +121,7 @@ $S -s 'flank' -f rules               # full-text regex search, lists matches
 ```
 
 ```sh
-H=skill/hero/scripts/hero.py
+H=skills/hero/scripts/hero.py
 $H "Blast"                           # full record, 6e first
 $H ENERGYBLAST -g 5e                 # by HERO Designer id, which is the same in both editions
 $H "Flight" -t Vehicle6E             # one template's version
@@ -115,7 +129,7 @@ $H -s 'hit location' -f modifiers    # full-text regex search
 ```
 
 ```sh
-C=skill/cypher/scripts/cypher.py
+C=skills/cypher/scripts/cypher.py
 $C "Bears a Halo of Fire"            # a focus, with its tier abilities
 $C "Onslaught" "Warrior"             # several at once; Warrior finds the type page too
 $C "Blaster" --genre sci-fi          # limit to one genre's items
@@ -123,7 +137,7 @@ $C -s 'GM intrusion' -f rules        # full-text regex search
 ```
 
 ```sh
-D=skill/dnd5e/scripts/dnd5e.py
+D=skills/dnd5e/scripts/dnd5e.py
 $D "Fireball"                        # both editions, 2024 first
 $D "Adult Red Dragon" -e 2014        # limit to one edition
 $D "Grappled"                        # finds "Rules Glossary > Grappled"
@@ -179,30 +193,32 @@ extract_hero.py               # HERO Designer rules JSON -> compact text
 extract_cypher.py             # cyphersystem-compendium release.zip (LevelDB packs) -> compact text
 extract_dnd5e.py              # dnd5e system release zip (LevelDB packs, range-fetched) -> compact text
 install_skills.sh             # link skills into ~/.claude/skills
-skill/pf2e/
+skills/pf2e/
   SKILL.md                    # when Claude uses the skill; record format legend
   scripts/pf.py               # lookup / search tool
   data/                       # generated, not committed (see .gitignore)
     VERSION  sources.txt      # release tags; source-code abbreviations
     pf2e/*.txt  sf2e/*.txt    # one file per category, plus index.txt
-skill/hero/
+skills/hero/
   SKILL.md                    # when Claude uses the skill; record format legend
   scripts/hero.py             # lookup / search tool
   data/                       # generated, not committed (Hero Games' copyright)
     VERSION                   # HERO Designer build the data came from
     5e/*.txt  6e/*.txt        # one file per category, plus index.txt
-skill/cypher/
+skills/cypher/
   SKILL.md                    # when Claude uses the skill; record format legend
   scripts/cypher.py           # lookup / search tool
   data/                       # generated, not committed (see .gitignore)
     VERSION                   # release tag
     *.txt                     # one file per category, plus index.txt
-skill/dnd5e/
+skills/dnd5e/
   SKILL.md                    # when Claude uses the skill; record format legend
   scripts/dnd5e.py            # lookup / search tool
   data/                       # generated, not committed (see .gitignore)
     VERSION                   # release tag
     2024/*.txt  2014/*.txt    # one file per category, plus index.txt
+skills/one-shot/
+  SKILL.md                    # Roll For Shoes GM instructions; no data or scripts
 bot/
   src/bot.ts                  # Discord bot (discord.js): /pf, /sf, /hero, /cypher and /dnd commands, components
   src/store.ts                # in-memory data, lookup/search/autocomplete (port of pf.py + hero.py + cypher.py + dnd5e.py)
