@@ -1,24 +1,25 @@
 #!/usr/bin/env bash
 # Link skills into ~/.claude/skills. Generate their data first: ./extract_pf2e.py for
 # pf2e, ./extract_hero.py for hero, ./extract_cypher.py for cypher, ./extract_dnd5e.py for dnd5e.
-# Usage: ./install_skills.sh [SKILL...]   (default: pf2e hero cypher dnd5e)
+# one-shot needs no data.
+# Usage: ./install_skills.sh [SKILL...]   (default: pf2e hero cypher dnd5e one-shot)
 set -euo pipefail
 cd "$(dirname "$0")"
 skills=("$@")
-[[ ${#skills[@]} -gt 0 ]] || skills=(pf2e hero cypher dnd5e)
+[[ ${#skills[@]} -gt 0 ]] || skills=(pf2e hero cypher dnd5e one-shot)
 mkdir -p ~/.claude/skills
 for s in "${skills[@]}"; do
-    if [[ ! -f skill/$s/SKILL.md ]]; then
-        echo "error: no skill named $s in skill/" >&2
+    if [[ ! -f skills/$s/SKILL.md ]]; then
+        echo "error: no skill named $s in skills/" >&2
         exit 1
     fi
-    if [[ ! -f skill/$s/data/VERSION ]]; then
-        extractor=extract_pf2e.py
-        [[ $s == hero ]] && extractor=extract_hero.py
-        [[ $s == cypher ]] && extractor=extract_cypher.py
-        [[ $s == dnd5e ]] && extractor=extract_dnd5e.py
-        echo "warning: no data in skill/$s/data yet; run ./$extractor" >&2
+    case $s in
+        pf2e | hero | cypher | dnd5e) extractor=extract_$s.py ;;
+        *) extractor= ;;
+    esac
+    if [[ -n $extractor && ! -f skills/$s/data/VERSION ]]; then
+        echo "warning: no data in skills/$s/data yet; run ./$extractor" >&2
     fi
-    ln -sfn "$PWD/skill/$s" ~/.claude/skills/$s
-    echo "linked ~/.claude/skills/$s -> $PWD/skill/$s"
+    ln -sfn "$PWD/skills/$s" ~/.claude/skills/$s
+    echo "linked ~/.claude/skills/$s -> $PWD/skills/$s"
 done

@@ -400,8 +400,8 @@ def check(out: Path) -> int:
 def main():
     ap = argparse.ArgumentParser(description=f"Extract the Cypher SRD from {REPO} release {ASSET}.")
     ap.add_argument("--tag", metavar="TAG", help="release tag, e.g. v3.12.1 or 3.12.1 (default: latest)")
-    ap.add_argument("--out", default=Path(__file__).resolve().parent / "skill" / "cypher" / "data", type=Path,
-                    help="output directory (default: skill/cypher/data next to this script)")
+    ap.add_argument("--out", default=Path(__file__).resolve().parent / "skills" / "cypher" / "data", type=Path,
+                    help="output directory (default: skills/cypher/data next to this script)")
     ap.add_argument("--check", action="store_true", help="compare installed data with the latest release and exit")
     a = ap.parse_args()
     if a.check:

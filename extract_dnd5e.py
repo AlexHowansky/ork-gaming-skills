@@ -2029,8 +2029,8 @@ def check(out: Path) -> int:
 def main():
     ap = argparse.ArgumentParser(description=f"Extract the D&D 5e SRD from the {REPO} release zip.")
     ap.add_argument("--tag", metavar="TAG", help="release tag, e.g. release-6.0.5 or 6.0.5 (default: latest)")
-    ap.add_argument("--out", default=Path(__file__).resolve().parent / "skill" / "dnd5e" / "data", type=Path,
-                    help="output directory (default: skill/dnd5e/data next to this script)")
+    ap.add_argument("--out", default=Path(__file__).resolve().parent / "skills" / "dnd5e" / "data", type=Path,
+                    help="output directory (default: skills/dnd5e/data next to this script)")
     ap.add_argument("--check", action="store_true", help="compare installed data with the latest release and exit")
     a = ap.parse_args()
     if a.check:

@@ -3,7 +3,7 @@
 
 Reads the rules directory written by `ork-hero-extract-rules` (from the
 ork-hero-export-renderer package: manifest.json plus one JSON file per HERO
-Designer template) and writes skill/hero/data/{5e,6e}/<category>.txt, one record
+Designer template) and writes skills/hero/data/{5e,6e}/<category>.txt, one record
 per line.
 
   ./extract_hero.py [--rules DIR] [--out DIR]
@@ -282,7 +282,7 @@ def override(base, over):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--rules", help="rules directory written by ork-hero-extract-rules")
-    ap.add_argument("--out", default=str(HERE / "skill" / "hero" / "data"), help="output directory")
+    ap.add_argument("--out", default=str(HERE / "skills" / "hero" / "data"), help="output directory")
     a = ap.parse_args()
     cands = [a.rules] if a.rules else [os.environ.get("ORK_HERO_RULES"), str(HERE.parent / "ork-hero-export-renderer" / "rules"), "rules"]
     rules = next((Path(c) for c in cands if c and (Path(c) / "manifest.json").is_file()), None)

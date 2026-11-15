@@ -740,8 +740,8 @@ def main():
     ap = argparse.ArgumentParser(description=f"Extract from {REPO} release {ASSET} files.")
     for game in GAMES:
         ap.add_argument(f"--{game}", metavar="TAG", help=f"release tag, e.g. {game}-8.5.1 or 8.5.1 (default: latest)")
-    ap.add_argument("--out", default=Path(__file__).resolve().parent / "skill" / "pf2e" / "data", type=Path,
-                    help="output directory (default: skill/pf2e/data next to this script)")
+    ap.add_argument("--out", default=Path(__file__).resolve().parent / "skills" / "pf2e" / "data", type=Path,
+                    help="output directory (default: skills/pf2e/data next to this script)")
     ap.add_argument("--check", action="store_true", help="compare installed data with the latest releases and exit")
     a = ap.parse_args()
     if a.check:
