@@ -749,35 +749,41 @@ If you cannot write files, keep the same information in mind, and restate the
 essentials of the GM notes to yourself in your private reasoning at each scene
 change.
 
-### Keeping the GM notes hidden
+### Writing session files through a subagent
 
 The interface shows the players a preview or diff of every file you create or
 edit, any permission prompt shows the full content, and shell commands such as
-heredocs or `cat` appear on screen as typed. Never write, edit, or print the GM
-notes file directly in the main conversation. Instead:
+heredocs or `cat` appear on screen as typed. For the GM notes this would spoil
+secrets; for the session log it clutters play with diffs. Never write or edit
+either file directly in the main conversation. Instead:
 
-* **Writing:** hand every create or update of the GM notes to a subagent (for
-  example, the Agent tool; a small, fast model is fine). Put the notes content
-  or the requested change in the subagent's prompt, and tell it to apply the
-  change to the file and reply only "done", without quoting the content back.
-  Give the call a spoiler-free description such as "Update GM notes", because
-  the description is shown on screen. The subagent's own edits stay out of the
-  main view.
-* **Reading:** use the file-reading tool (for example, Read), which shows the
-  players only a line count. Never `cat`, `grep`, or otherwise print the file
-  through the shell, because command output can appear on screen.
-* **Talking about it:** say only that the notes were created or updated, never
-  what changed.
+* **Writing:** hand every create or update of the GM notes or the session log
+  to a subagent (for example, the Agent tool; a small, fast model is fine). Put
+  the content or the requested change in the subagent's prompt, and tell it to
+  apply the change to the file and reply only "done", without quoting the
+  content back. Give the call a short, spoiler-free description such as "Update
+  GM notes" or "Update session log", because the description is shown on
+  screen. The subagent's own edits stay out of the main view. When both files
+  need updating at the same moment, one subagent call may handle both.
 * **Permission prompts:** if a permission prompt shows up for the subagent's
   write, it exposes the content. During Preparation, before the first notes
   write, tell the players this, and suggest they pre-approve writes to
   `sessions/` (for example, `Write(sessions/**)` and `Edit(sessions/**)` in the
   `allow` list of `.claude/settings.json`), or have a player who doesn't mind
   spoilers approve the prompts.
-* **No subagents:** if you cannot use subagents, warn the players that note
-  writes will be visible, and ask them to look away from tool output.
+* **No subagents:** if you cannot use subagents, write the session log
+  directly, and warn the players that note writes will be visible and ask them
+  to look away from tool output.
 
-The public session log holds no secrets, so write it normally.
+### Keeping the GM notes hidden
+
+Never edit or print the GM notes file directly in the main conversation.
+
+* **Reading:** use the file-reading tool (for example, Read), which shows the
+  players only a line count. Never `cat`, `grep`, or otherwise print the file
+  through the shell, because command output can appear on screen.
+* **Talking about it:** say only that the notes were created or updated, never
+  what changed.
 
 ## GM Notes (hidden)
 
@@ -796,15 +802,17 @@ It holds:
 Re-read this file whenever you are unsure of a hidden detail, and always after
 the conversation has been summarized. Treat it as the source of truth. When play
 changes the hidden situation (an NPC dies, a plan changes, the players force a
-new direction), update the file rather than letting it go stale. Always read and
-write it as described in Keeping the GM notes hidden.
+new direction), update the file rather than letting it go stale. Always write it
+through a subagent and read it as described in Keeping the GM notes hidden.
 
 ## Session Log (public)
 
 Create the log when play begins, and update it at every scene change and
 whenever a skill is gained or the character sheets otherwise change. Do not wait
 until the end. It contains only what the players have seen. Never write hidden
-information here until it has been revealed in play.
+information here until it has been revealed in play. Write every create or
+update through a subagent, as described in Writing session files through a
+subagent.
 
 Use this template:
 
