@@ -738,12 +738,13 @@ pace, speed up, or slow down. Adjust the remaining pacing to their answer.
 # Session Records
 
 Long sessions may be summarized partway through, and anything that exists only
-in your head can drift or be lost. Keep two files in a `sessions/` directory:
-hidden GM notes and a public session log. Both share a base name built from the
-date (from `date`, if you have a shell) and a short slug of the adventure title:
+in your head can drift or be lost. Keep two files in the
+`${CLAUDE_SKILL_DIR}/sessions/` directory: hidden GM notes and a public session
+log. Both share a base name built from the date (from `date`, if you have a
+shell) and a short slug of the adventure title:
 
-* GM notes: `sessions/YYYY-MM-DD-<slug>.gm-notes.md`
-* Session log: `sessions/YYYY-MM-DD-<slug>.md`
+* GM notes: `${CLAUDE_SKILL_DIR}/sessions/YYYY-MM-DD-<slug>.gm-notes.md`
+* Session log: `${CLAUDE_SKILL_DIR}/sessions/YYYY-MM-DD-<slug>.md`
 
 If you cannot write files, keep the same information in mind, and restate the
 essentials of the GM notes to yourself in your private reasoning at each scene
@@ -768,9 +769,11 @@ either file directly in the main conversation. Instead:
 * **Permission prompts:** if a permission prompt shows up for the subagent's
   write, it exposes the content. During Preparation, before the first notes
   write, tell the players this, and suggest they pre-approve writes to
-  `sessions/` (for example, `Write(sessions/**)` and `Edit(sessions/**)` in the
-  `allow` list of `.claude/settings.json`), or have a player who doesn't mind
-  spoilers approve the prompts.
+  `${CLAUDE_SKILL_DIR}/sessions/` (for example,
+  `Write(${CLAUDE_SKILL_DIR}/sessions/**)` and
+  `Edit(${CLAUDE_SKILL_DIR}/sessions/**)` in the `allow` list of
+  `.claude/settings.json`), or have a player who doesn't mind spoilers approve
+  the prompts.
 * **No subagents:** if you cannot use subagents, write the session log
   directly, and warn the players that note writes will be visible and ask them
   to look away from tool output.
